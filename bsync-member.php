@@ -762,20 +762,21 @@ function bsync_member_enqueue_frontend_assets() {
 add_action( 'wp_enqueue_scripts', 'bsync_member_enqueue_frontend_assets' );
 
 /**
- * Use a bundled template for member category archives so they show a
- * consistent grid/list of member pages regardless of the active theme.
+ * Ensure member category archives query the member page CPT, so assigned
+ * member pages actually appear on the archive instead of falling back to
+ * normal posts.
  */
-function bsync_member_category_template( $template ) {
-    if ( is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
-        $plugin_template = BSYNC_MEMBER_PATH . 'templates/taxonomy-bsync_member_category.php';
-        if ( file_exists( $plugin_template ) ) {
-            return $plugin_template;
-        }
+function bsync_member_adjust_category_query( $query ) {
+    if ( is_admin() || ! $query->is_main_query() ) {
+        return;
     }
 
-    return $template;
+    if ( $query->is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
+        $query->set( 'post_type', array( BSYNC_MEMBER_PAGE_CPT ) );
+        $query->set( 'post_status', 'publish' );
+    }
 }
-add_filter( 'template_include', 'bsync_member_category_template' );
+add_action( 'pre_get_posts', 'bsync_member_adjust_category_query' );
 
 /**
  * Fluent Forms integration: link submissions to members and member pages.
