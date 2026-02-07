@@ -1,118 +1,104 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <title>Bsync Member – How It Works</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; }
-        h1, h2, h3 { margin-top: 1.2em; }
-        ul { list-style: disc; margin-left: 1.5em; }
-        code { background: #f5f5f5; padding: 2px 4px; border-radius: 3px; }
-        .muted { color: #666; }
-    </style>
-</head>
-<body>
-    <h1>Bsync Member – How It Works</h1>
+<p>Bsync Member adds a simple membership layer to WordPress and integrates with the <strong>bsynce CRM</strong> plugin and <strong>Fluent Forms</strong>. It focuses on member roles, member-only pages, and a front-end member portal.</p>
 
-    <p>Bsync Member adds a simple membership layer to WordPress and integrates with the <strong>bsynce CRM</strong> plugin and <strong>Fluent Forms</strong>. It focuses on member roles, private member pages, and a front-end member portal.</p>
+<h2>What this plugin provides</h2>
+<ul>
+    <li><strong>Member roles</strong>
+        <ul>
+            <li><em>Member Manager</em> role (<code>bsync_member_manager</code>) – can manage members and their pages, and (when bsynce CRM is active) access the CRM dashboard.</li>
+            <li><em>Member</em> role (<code>bsync_member</code>) – regular members who can log in and view the member portal.</li>
+        </ul>
+    </li>
+    <li><strong>Member-only pages</strong>
+        <ul>
+            <li>Custom post type <code>bsync_member_page</code>, not public or indexed, but with real URLs for logged-in members.</li>
+            <li>Each member can have a “primary” member page linked to their account.</li>
+            <li>Member pages are meant for private notes, documents, or summary information per member.</li>
+        </ul>
+    </li>
+    <li><strong>Member category taxonomy</strong>
+        <ul>
+            <li>Private taxonomy <code>bsync_member_category</code> used to group member pages (for example by cohort, program, or type).</li>
+            <li>Category archive pages (for example <code>/member-category/{slug}</code>) show a grid of member pages in that category for logged-in members.</li>
+            <li>The shortcode <code>[bsync_member_categories]</code> shows a list of member categories with links to their archive pages.</li>
+        </ul>
+    </li>
+    <li><strong>Member portal shortcode</strong>
+        <ul>
+            <li>Shortcode <code>[bsync_member_portal]</code> shows a logged-in member:</li>
+            <li>Their primary member page content.</li>
+            <li>A list of their linked Fluent Forms submissions.</li>
+        </ul>
+    </li>
+</ul>
 
-    <h2>What this plugin provides</h2>
-    <ul>
-        <li><strong>Member roles</strong>
-            <ul>
-                <li><em>Member Manager</em> role (<code>bsync_member_manager</code>) – can manage members and their pages, and (when bsynce CRM is active) access the CRM dashboard.</li>
-                <li><em>Member</em> role (<code>bsync_member</code>) – regular members who can log in and view the member portal.</li>
-            </ul>
-        </li>
-        <li><strong>Private member pages</strong>
-            <ul>
-                <li>Custom post type <code>bsync_member_page</code>, not public and not indexed.</li>
-                <li>Each member can have a “primary” member page linked to their account.</li>
-                <li>Member pages are meant for private notes, documents, or summary information per member.</li>
-            </ul>
-        </li>
-        <li><strong>Member category taxonomy</strong>
-            <ul>
-                <li>Private taxonomy <code>bsync_member_category</code> used to group member pages (for example by cohort, program, or type).</li>
-            </ul>
-        </li>
-        <li><strong>Member portal shortcode</strong>
-            <ul>
-                <li>Shortcode <code>[bsync_member_portal]</code> shows a logged-in member:</li>
-                <li>Their primary member page content.</li>
-                <li>A list of their linked Fluent Forms submissions.</li>
-            </ul>
-        </li>
-    </ul>
+<h2>Admin screens</h2>
+<ul>
+    <li><strong>Bsync Members → Members</strong>
+        <ul>
+            <li>Add a new member by email (optionally first/last name).</li>
+            <li>Convert existing users to members.</li>
+            <li>Activate / deactivate / delete members.</li>
+            <li>Send password reset emails.</li>
+        </ul>
+    </li>
+    <li><strong>Bsync Members → Settings</strong>
+        <ul>
+            <li>Rename the visible labels for:</li>
+            <li>Member Manager role.</li>
+            <li>Member role.</li>
+            <li>Member page type (singular / plural).</li>
+            <li>Member category type (singular / plural).</li>
+        </ul>
+    </li>
+    <li><strong>Member pages and categories</strong>
+        <ul>
+            <li>Manage member pages under the custom post type menu, just like regular posts, but they are hidden from public visitors.</li>
+            <li>Assign member categories to group pages; category archives and the categories shortcode are only visible to logged-in members.</li>
+        </ul>
+    </li>
+</ul>
 
-    <h2>Admin screens</h2>
-    <ul>
-        <li><strong>Bsync Members → Members</strong>
-            <ul>
-                <li>Add a new member by email (optionally first/last name).</li>
-                <li>Convert existing users to members.</li>
-                <li>Activate / deactivate / delete members.</li>
-                <li>Send password reset emails.</li>
-            </ul>
-        </li>
-        <li><strong>Bsync Members → Settings</strong>
-            <ul>
-                <li>Rename the visible labels for:</li>
-                <li>Member Manager role.</li>
-                <li>Member role.</li>
-                <li>Member page type (singular / plural).</li>
-                <li>Member category type (singular / plural).</li>
-            </ul>
-        </li>
-        <li><strong>Member pages and categories</strong>
-            <ul>
-                <li>Under the custom post type menu for member pages you can manage private pages just like regular posts, but they are hidden from public visitors.</li>
-            </ul>
-        </li>
-    </ul>
+<h2>Integration with Fluent Forms</h2>
+<ul>
+    <li>Bsync Member listens to Fluent Forms submission actions.</li>
+    <li>For each new entry, it tries to identify the member by either:</li>
+    <li>The currently logged-in user, or</li>
+    <li>An email address found inside the form response that matches an existing user.</li>
+    <li>When a member is found:</li>
+    <li>The submission is linked to that member using the submission meta key <code>bsync_member_user_id</code>.</li>
+    <li>If the member does not yet have a primary member page, the plugin creates one and stores its ID in user meta <code>bsync_member_page_id</code>.</li>
+    <li>The submission is also linked to that page via submission meta key <code>bsync_member_page_id</code>.</li>
+    <li>These links are what power the “My Form Submissions” table in the member portal.</li>
+</ul>
 
-    <h2>Integration with Fluent Forms</h2>
-    <ul>
-        <li>Bsync Member listens to Fluent Forms submission actions.</li>
-        <li>For each new entry, it tries to identify the member by:</li>
-        <li>The currently logged-in user, or</li>
-        <li>An email address found inside the form response that matches an existing user.</li>
-        <li>When a member is found:</li>
-        <li>The submission is linked to that member using the submission meta key <code>bsync_member_user_id</code>.</li>
-        <li>If the member does not yet have a primary member page, the plugin creates one and stores its ID in user meta <code>bsync_member_page_id</code>.</li>
-        <li>The submission is also linked to that page via submission meta key <code>bsync_member_page_id</code>.</li>
-        <li>These links are what power the “My Form Submissions” table in the member portal.</li>
-    </ul>
+<h2>Integration with bsynce CRM</h2>
+<p><em>This section applies when the <strong>bsynce CRM</strong> plugin is also installed and active.</em></p>
 
-    <h2>Integration with bsynce CRM</h2>
-    <p class="muted">This section applies when the <strong>bsynce CRM</strong> plugin is also installed and active.</p>
+<ul>
+    <li><strong>Shared access:</strong> The Member Manager role is granted the <code>manage_bsynce_crm</code> capability, so Member Managers can open the bsynce CRM dashboard and email templates without being full site administrators.</li>
+    <li><strong>Same data, different views:</strong>
+        <ul>
+            <li>Bsync Member focuses on the member’s perspective and front-end portal.</li>
+            <li>bsynce CRM focuses on the staff / admin side: reviewing submissions, updating statuses, and sending emails.</li>
+            <li>Both plugins are reading the same Fluent Forms submissions; Bsync Member simply adds extra relationships and a member-facing view.</li>
+        </ul>
+    </li>
+    <li><strong>Typical workflow:</strong>
+        <ul>
+            <li>A visitor submits a Fluent Form (for example, a registration form).</li>
+            <li>Bsync Member links the submission to a member user and their member page.</li>
+            <li>Staff (Member Managers) use bsynce CRM to review submissions, update statuses, and send reply emails.</li>
+            <li>Members log in to the front-end portal to see their member page and a history of their submissions.</li>
+        </ul>
+    </li>
+</ul>
 
-    <ul>
-        <li><strong>Shared access:</strong> The Member Manager role is granted the <code>manage_bsynce_crm</code> capability, so Member Managers can open the bsynce CRM dashboard and email templates without being full site administrators.</li>
-        <li><strong>Same data, different views:</strong>
-            <ul>
-                <li>Bsync Member focuses on the member’s perspective and front-end portal.</li>
-                <li>bsynce CRM focuses on the staff / admin side: reviewing submissions, updating statuses, and sending emails.</li>
-                <li>Both plugins are reading the same Fluent Forms submissions; Bsync Member simply adds extra relationships and a member-facing view.</li>
-            </ul>
-        </li>
-        <li><strong>Typical workflow:</strong>
-            <ul>
-                <li>A visitor submits a Fluent Form (for example, a registration form).</li>
-                <li>Bsync Member links the submission to a member user and their member page.</li>
-                <li>Staff (Member Managers) use bsynce CRM to review submissions, update statuses, and send reply emails.</li>
-                <li>Members log in to the front-end portal to see their member page and a history of their submissions.</li>
-            </ul>
-        </li>
-    </ul>
-
-    <h2>How to set it up</h2>
-    <ol>
-        <li>Activate both <strong>Bsync Member</strong> and <strong>bsynce CRM</strong> plugins.</li>
-        <li>In the WordPress admin, go to <strong>Bsync Members → Settings</strong> and choose the role and page labels that make sense for your site.</li>
-        <li>Create a new WordPress page and add the shortcode <code>[bsync_member_portal]</code>. This will be your member portal URL.</li>
-        <li>Use <strong>Bsync Members → Members</strong> to add or import member accounts.</li>
-        <li>Use Fluent Forms for your public forms. As members submit forms, their entries will start appearing in the member portal and can be managed from the bsynce CRM dashboard.</li>
-    </ol>
-</body>
-</html>
+<h2>How to set it up</h2>
+<ol>
+    <li>Activate both <strong>Bsync Member</strong> and <strong>bsynce CRM</strong> plugins.</li>
+    <li>In the WordPress admin, go to <strong>Bsync Members → Settings</strong> and choose the role and page labels that make sense for your site.</li>
+    <li>Create a new WordPress page and add the shortcode <code>[bsync_member_portal]</code>. This will be your member portal URL.</li>
+    <li>Optionally create a page with <code>[bsync_member_categories]</code> so members can see a list of all member categories.</li>
+    <li>Use <strong>Bsync Members → Members</strong> to add or import member accounts.</li>
+    <li>Use Fluent Forms for your public forms. As members submit forms, their entries will start appearing in the member portal and can be managed from the bsynce CRM dashboard.</li>
+</ol>
