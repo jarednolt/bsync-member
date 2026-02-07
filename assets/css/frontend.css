@@ -1,0 +1,93 @@
+.bsync-member-category-archive {
+    padding: 2rem 0;
+}
+
+.bsync-member-category-archive .bsync-member-category-header {
+    margin-bottom: 1.5rem;
+}
+
+.bsync-member-category-archive .bsync-member-category-title {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+}
+
+.bsync-member-category-archive .bsync-member-category-description {
+    max-width: 700px;
+    color: #555;
+}
+
+.bsync-member-category-archive .bsync-member-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.bsync-member-category-archive .bsync-member-card {
+    background: #ffffff;
+    border: 1px solid #e2e2e2;
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.bsync-member-category-archive .bsync-member-card-title {
+    font-size: 1.1rem;
+    margin: 0 0 0.75rem;
+}
+
+.bsync-member-category-archive .bsync-member-card-title a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.bsync-member-category-archive .bsync-member-card-title a:hover,
+.bsync-member-category-archive .bsync-member-card-title a:focus {
+    text-decoration: underline;
+}
+
+.bsync-member-category-archive .bsync-member-card-excerpt {
+    font-size: 0.95rem;
+    color: #555555;
+}
+
+.bsync-member-category-archive .bsync-member-pagination {
+    margin-top: 2rem;
+}
+
+/* Basic spacing tweaks for the portal so styles feel consistent */
+.bsync-member-portal {
+    margin: 2rem 0;
+}
+
+.bsync-member-portal .bsync-member-section {
+    margin-bottom: 2rem;
+}
+
+/* Simple styling for the member categories list shortcode */
+.bsync-member-category-list {
+    margin: 2rem 0;
+}
+
+.bsync-member-category-list-items {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+}
+
+.bsync-member-category-list-item a {
+    text-decoration: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid #e2e2e2;
+    background: #fafafa;
+    font-size: 0.95rem;
+}
+
+.bsync-member-category-list-item a:hover,
+.bsync-member-category-list-item a:focus {
+    background: #f0f0f0;
+}

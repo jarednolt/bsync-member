@@ -122,6 +122,10 @@ function bsync_member_activate() {
             $admin_role->add_cap( $cap );
         }
     }
+
+    // Ensure rewrite rules know about the member page URLs.
+    bsync_member_register_cpt_and_tax();
+    flush_rewrite_rules();
 }
 register_activation_hook( __FILE__, 'bsync_member_activate' );
 
@@ -191,9 +195,14 @@ function bsync_member_register_cpt_and_tax() {
         'labels'            => $tax_labels,
         'show_ui'           => true,
         'show_admin_column' => true,
-        'query_var'         => false,
         'public'            => false,
+        'publicly_queryable'=> true,
+        'query_var'         => 'bsync_member_category',
         'show_in_quick_edit'=> true,
+        'rewrite'           => array(
+            'slug'       => 'member-category',
+            'with_front' => false,
+        ),
         'capabilities'      => array(
             'manage_terms'  => BSYNC_MEMBER_MANAGE_CAP,
             'edit_terms'    => BSYNC_MEMBER_MANAGE_CAP,
@@ -688,14 +697,21 @@ function bsync_member_render_how_it_works_page() {
 
 /**
  * Front-end protection: only logged-in members (or managers/admins with portal
- * access) can view member pages. The pages still have real URLs, so once
- * logged in any member can visit them directly.
+ * access) can view member pages and member category archives. The pages still
+ * have real URLs, so once logged in any member can visit them directly.
  */
 function bsync_member_protect_member_pages() {
-    if ( is_singular( BSYNC_MEMBER_PAGE_CPT ) ) {
+    if ( is_singular( BSYNC_MEMBER_PAGE_CPT ) || is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
         if ( ! is_user_logged_in() || ! current_user_can( BSYNC_MEMBER_PORTAL_CAP ) ) {
             // Redirect to login and then back to the requested member page.
-            $redirect = get_permalink();
+            if ( is_singular( BSYNC_MEMBER_PAGE_CPT ) ) {
+                $redirect = get_permalink();
+            } elseif ( is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
+                $term     = get_queried_object();
+                $redirect = ! empty( $term ) ? get_term_link( $term ) : home_url( '/' );
+            } else {
+                $redirect = home_url( '/' );
+            }
             wp_safe_redirect( wp_login_url( $redirect ) );
             exit;
         }
@@ -704,15 +720,62 @@ function bsync_member_protect_member_pages() {
 add_action( 'template_redirect', 'bsync_member_protect_member_pages' );
 
 /**
- * Ensure member pages are not indexed by search engines even though they are
- * viewable on the front end for logged-in members.
+ * Ensure member pages and member category archives are not indexed by search
+ * engines even though they are viewable on the front end for logged-in
+ * members.
  */
 function bsync_member_noindex_member_pages() {
-    if ( is_singular( BSYNC_MEMBER_PAGE_CPT ) ) {
+    if ( is_singular( BSYNC_MEMBER_PAGE_CPT ) || is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
         echo "<meta name='robots' content='noindex,nofollow' />\n"; // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet
     }
 }
 add_action( 'wp_head', 'bsync_member_noindex_member_pages' );
+
+/**
+ * Front-end styles for member pages, member category archives and shortcodes.
+ */
+function bsync_member_enqueue_frontend_assets() {
+    $enqueue = false;
+
+    // Always style the custom CPT and taxonomy archives.
+    if ( is_singular( BSYNC_MEMBER_PAGE_CPT ) || is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
+        $enqueue = true;
+    } elseif ( is_singular() ) {
+        // Also load styles on pages using our shortcodes.
+        global $post;
+        if ( $post instanceof WP_Post ) {
+            if ( has_shortcode( $post->post_content, 'bsync_member_portal' ) || has_shortcode( $post->post_content, 'bsync_member_categories' ) ) {
+                $enqueue = true;
+            }
+        }
+    }
+
+    if ( $enqueue ) {
+        wp_enqueue_style(
+            'bsync-member-frontend',
+            BSYNC_MEMBER_URL . 'assets/css/frontend.css',
+            array(),
+            BSYNC_MEMBER_VERSION
+        );
+    }
+}
+add_action( 'wp_enqueue_scripts', 'bsync_member_enqueue_frontend_assets' );
+
+/**
+ * Use a bundled template for member category archives so they show a
+ * consistent grid/list of member pages regardless of the active theme.
+ */
+function bsync_member_category_template( $template ) {
+    if ( is_tax( BSYNC_MEMBER_CATEGORY_TAX ) ) {
+        $plugin_template = BSYNC_MEMBER_PATH . 'templates/taxonomy-bsync_member_category.php';
+        if ( file_exists( $plugin_template ) ) {
+            return $plugin_template;
+        }
+    }
+
+    return $template;
+}
+add_filter( 'template_include', 'bsync_member_category_template' );
 
 /**
  * Fluent Forms integration: link submissions to members and member pages.
@@ -1044,3 +1107,54 @@ function bsync_member_portal_shortcode() {
     return ob_get_clean();
 }
 add_shortcode( 'bsync_member_portal', 'bsync_member_portal_shortcode' );
+
+/**
+ * Shortcode to list all member categories with links to their archives.
+ *
+ * Usage: [bsync_member_categories]
+ */
+function bsync_member_categories_shortcode() {
+    if ( ! is_user_logged_in() ) {
+        return '<p>' . esc_html__( 'You must be logged in to view member categories.', 'bsync-member' ) . '</p>';
+    }
+
+    if ( ! current_user_can( BSYNC_MEMBER_PORTAL_CAP ) ) {
+        return '<p>' . esc_html__( 'You do not have access to member categories.', 'bsync-member' ) . '</p>';
+    }
+
+    $terms = get_terms(
+        array(
+            'taxonomy'   => BSYNC_MEMBER_CATEGORY_TAX,
+            'hide_empty' => true,
+            'orderby'    => 'name',
+            'order'      => 'ASC',
+        )
+    );
+
+    ob_start();
+
+    echo '<div class="bsync-member-category-list">';
+    echo '<h2>' . esc_html__( 'Member Categories', 'bsync-member' ) . '</h2>';
+
+    if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+        echo '<ul class="bsync-member-category-list-items">';
+        foreach ( $terms as $term ) {
+            $link = get_term_link( $term );
+            if ( is_wp_error( $link ) ) {
+                continue;
+            }
+
+            echo '<li class="bsync-member-category-list-item">';
+            echo '<a href="' . esc_url( $link ) . '">' . esc_html( $term->name ) . '</a>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    } else {
+        echo '<p>' . esc_html__( 'No member categories found yet.', 'bsync-member' ) . '</p>';
+    }
+
+    echo '</div>';
+
+    return ob_get_clean();
+}
+add_shortcode( 'bsync_member_categories', 'bsync_member_categories_shortcode' );
