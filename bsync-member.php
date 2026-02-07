@@ -59,6 +59,11 @@ function bsync_member_activate() {
                 'read'                  => true,
                 BSYNC_MEMBER_MANAGE_CAP => true,
                 BSYNC_MEMBER_PORTAL_CAP => true,
+                // Allow Member Managers to create and manage users and set roles.
+                'list_users'            => true,
+                'edit_users'            => true,
+                'promote_users'         => true,
+                'create_users'          => true,
             )
         );
     } else {
@@ -66,6 +71,10 @@ function bsync_member_activate() {
         $manager_role->add_cap( 'read' );
         $manager_role->add_cap( BSYNC_MEMBER_MANAGE_CAP );
         $manager_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
+        $manager_role->add_cap( 'list_users' );
+        $manager_role->add_cap( 'edit_users' );
+        $manager_role->add_cap( 'promote_users' );
+        $manager_role->add_cap( 'create_users' );
     }
 
     // Create / update Member role.
@@ -261,6 +270,10 @@ function bsync_member_ensure_caps() {
     $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
     if ( $manager_role ) {
         $manager_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
+        $manager_role->add_cap( 'list_users' );
+        $manager_role->add_cap( 'edit_users' );
+        $manager_role->add_cap( 'promote_users' );
+        $manager_role->add_cap( 'create_users' );
     }
 
     $member_role = get_role( BSYNC_MEMBER_ROLE );
@@ -278,6 +291,31 @@ function bsync_member_ensure_caps() {
     }
 }
 add_action( 'init', 'bsync_member_ensure_caps', 20 );
+
+/**
+ * Limit which roles a Member Manager can assign when creating or editing users.
+ *
+ * Member Managers should be able to set users to the Member role, but not to
+ * higher-privileged roles such as Administrator or even the Member Manager
+ * role itself.
+ */
+function bsync_member_limit_editable_roles_for_manager( $roles ) {
+    // Only affect users who manage members but are not administrators.
+    if ( ! current_user_can( BSYNC_MEMBER_MANAGE_CAP ) || current_user_can( 'administrator' ) ) {
+        return $roles;
+    }
+
+    $allowed = array();
+
+    foreach ( $roles as $role_key => $details ) {
+        if ( BSYNC_MEMBER_ROLE === $role_key ) {
+            $allowed[ $role_key ] = $details;
+        }
+    }
+
+    return $allowed;
+}
+add_filter( 'editable_roles', 'bsync_member_limit_editable_roles_for_manager' );
 
 /**
  * Admin menu: Bsync Members (Members list + Settings).
@@ -306,7 +344,8 @@ function bsync_member_register_admin_menu() {
         'bsync_members',
         __( 'Settings', 'bsync-member' ),
         __( 'Settings', 'bsync-member' ),
-        BSYNC_MEMBER_MANAGE_CAP,
+        // Only site admins (manage_options) should see Settings.
+        'manage_options',
         'bsync_member_settings',
         'bsync_member_render_settings_page'
     );
@@ -326,7 +365,8 @@ add_action( 'admin_menu', 'bsync_member_register_admin_menu' );
  * Settings screen: rename roles, page type, and category type.
  */
 function bsync_member_render_settings_page() {
-    if ( ! current_user_can( BSYNC_MEMBER_MANAGE_CAP ) ) {
+    // Restrict this screen to administrators or similar high-privilege roles.
+    if ( ! current_user_can( 'manage_options' ) ) {
         wp_die( __( 'You do not have permission to access this page.', 'bsync-member' ) );
     }
 
