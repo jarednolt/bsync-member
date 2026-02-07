@@ -535,11 +535,19 @@ function bsync_member_render_members_page() {
         }
     }
 
-    // Fetch members with the Member role.
+    // Fetch members that are managed by this plugin.
+    // We look for users who have the bsync_member_active meta flag so that
+    // deactivated members (who may no longer have the Member role) still
+    // appear in this table and can be reactivated later.
     $user_query = new WP_User_Query(
         array(
-            'role'   => BSYNC_MEMBER_ROLE,
-            'number' => 200,
+            'number'     => 200,
+            'meta_query' => array(
+                array(
+                    'key'     => 'bsync_member_active',
+                    'compare' => 'EXISTS',
+                ),
+            ),
         )
     );
     $members = $user_query->get_results();
@@ -732,6 +740,45 @@ function bsync_member_noindex_member_pages() {
 add_action( 'wp_head', 'bsync_member_noindex_member_pages' );
 
 /**
+ * Hide the WordPress admin bar on the front end for users who either have
+ * no role at all or who are regular members created/managed by this plugin.
+ *
+ * Member Managers and site admins keep the admin bar so they can reach
+ * wp-admin and management screens.
+ */
+function bsync_member_control_admin_bar( $show ) {
+    if ( is_admin() || ! is_user_logged_in() ) {
+        return $show;
+    }
+
+    $user = wp_get_current_user();
+    if ( ! $user || ! ( $user instanceof WP_User ) ) {
+        return $show;
+    }
+
+    $roles = (array) $user->roles;
+
+    // Users with no role should not see the admin bar on the front end.
+    if ( empty( $roles ) ) {
+        return false;
+    }
+
+    // Basic members (bsync_member) who are not managers/admins also do not
+    // need the admin bar on the front end.
+    if (
+        in_array( BSYNC_MEMBER_ROLE, $roles, true ) &&
+        ! user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) &&
+        ! user_can( $user, 'edit_posts' ) &&
+        ! user_can( $user, 'manage_options' )
+    ) {
+        return false;
+    }
+
+    return $show;
+}
+add_filter( 'show_admin_bar', 'bsync_member_control_admin_bar' );
+
+/**
  * Front-end styles for member pages, member category archives and shortcodes.
  */
 function bsync_member_enqueue_frontend_assets() {
@@ -744,7 +791,11 @@ function bsync_member_enqueue_frontend_assets() {
         // Also load styles on pages using our shortcodes.
         global $post;
         if ( $post instanceof WP_Post ) {
-            if ( has_shortcode( $post->post_content, 'bsync_member_portal' ) || has_shortcode( $post->post_content, 'bsync_member_categories' ) ) {
+            if (
+                has_shortcode( $post->post_content, 'bsync_member_portal' ) ||
+                has_shortcode( $post->post_content, 'bsync_member_categories' ) ||
+                has_shortcode( $post->post_content, 'bsync_member_login' )
+            ) {
                 $enqueue = true;
             }
         }
@@ -1019,11 +1070,21 @@ function bsync_member_get_submissions_for_user( $user_id, $limit = 20 ) {
  */
 function bsync_member_portal_shortcode() {
     if ( ! is_user_logged_in() ) {
-        return '<p>' . esc_html__( 'You must be logged in to access the member portal.', 'bsync-member' ) . '</p>';
+        $login_url = wp_login_url( get_permalink() );
+        return '<p>' . sprintf(
+            /* translators: %s: login URL */
+            esc_html__( 'You must be logged in to access the member portal. %s', 'bsync-member' ),
+            '<a href="' . esc_url( $login_url ) . '">' . esc_html__( 'Log in', 'bsync-member' ) . '</a>'
+        ) . '</p>';
     }
 
     if ( ! current_user_can( BSYNC_MEMBER_PORTAL_CAP ) ) {
-        return '<p>' . esc_html__( 'You do not have access to the member portal.', 'bsync-member' ) . '</p>';
+        $home_url = home_url( '/' );
+        return '<p>' . sprintf(
+            /* translators: %s: home URL */
+            esc_html__( 'You do not have access to the member portal. %s', 'bsync-member' ),
+            '<a href="' . esc_url( $home_url ) . '">' . esc_html__( 'Return to the main site.', 'bsync-member' ) . '</a>'
+        ) . '</p>';
     }
 
     $user_id = get_current_user_id();
@@ -1039,6 +1100,14 @@ function bsync_member_portal_shortcode() {
     echo '<div class="bsync-member-portal">';
     echo '<h2>' . esc_html__( 'Member Portal', 'bsync-member' ) . '</h2>';
     echo '<p>' . sprintf( esc_html__( 'Welcome, %s', 'bsync-member' ), esc_html( $user->display_name ) ) . '</p>';
+
+    $logout_url = wp_logout_url( home_url( '/' ) );
+    $reset_url  = wp_lostpassword_url();
+    echo '<p class="bsync-member-account-links">';
+    echo '<a href="' . esc_url( $logout_url ) . '">' . esc_html__( 'Log out', 'bsync-member' ) . '</a>';
+    echo ' &middot; ';
+    echo '<a href="' . esc_url( $reset_url ) . '">' . esc_html__( 'Reset password', 'bsync-member' ) . '</a>';
+    echo '</p>';
 
     // Member page section.
     echo '<div class="bsync-member-section bsync-member-page">';
@@ -1159,3 +1228,67 @@ function bsync_member_categories_shortcode() {
     return ob_get_clean();
 }
 add_shortcode( 'bsync_member_categories', 'bsync_member_categories_shortcode' );
+
+/**
+ * Styled member login form shortcode.
+ *
+ * Usage: [bsync_member_login] or [bsync_member_login redirect="/member-portal/"]
+ */
+function bsync_member_login_shortcode( $atts ) {
+    $atts = shortcode_atts(
+        array(
+            'redirect' => '',
+        ),
+        $atts,
+        'bsync_member_login'
+    );
+
+    $redirect_to = '';
+    if ( ! empty( $atts['redirect'] ) ) {
+        $redirect_to = trim( $atts['redirect'] );
+        if ( 0 === strpos( $redirect_to, '/' ) ) {
+            $redirect_to = home_url( $redirect_to );
+        }
+    } elseif ( ! empty( $_GET['redirect_to'] ) ) {
+        $redirect_to = esc_url_raw( wp_unslash( $_GET['redirect_to'] ) );
+    }
+
+    if ( is_user_logged_in() ) {
+        if ( $redirect_to ) {
+            return '<p>' . sprintf(
+                /* translators: %s: redirect URL */
+                esc_html__( 'You are already logged in. %s', 'bsync-member' ),
+                '<a href="' . esc_url( $redirect_to ) . '">' . esc_html__( 'Continue', 'bsync-member' ) . '</a>'
+            ) . '</p>';
+        }
+
+        return '<p>' . esc_html__( 'You are already logged in.', 'bsync-member' ) . '</p>';
+    }
+
+    ob_start();
+
+    echo '<div class="bsync-member-login">';
+    echo '<h2>' . esc_html__( 'Member Login', 'bsync-member' ) . '</h2>';
+
+    $form_args = array(
+        'echo'           => false,
+        'redirect'       => $redirect_to,
+        'remember'       => true,
+        'label_username' => esc_html__( 'Email or Username', 'bsync-member' ),
+        'label_password' => esc_html__( 'Password', 'bsync-member' ),
+        'label_remember' => esc_html__( 'Remember Me', 'bsync-member' ),
+        'label_log_in'   => esc_html__( 'Log In', 'bsync-member' ),
+    );
+
+    echo wp_login_form( $form_args );
+
+    $reset_url = wp_lostpassword_url();
+    echo '<p class="bsync-member-login-reset">';
+    echo '<a href="' . esc_url( $reset_url ) . '">' . esc_html__( 'Forgot your password?', 'bsync-member' ) . '</a>';
+    echo '</p>';
+
+    echo '</div>';
+
+    return ob_get_clean();
+}
+add_shortcode( 'bsync_member_login', 'bsync_member_login_shortcode' );

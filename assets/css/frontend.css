@@ -64,6 +64,11 @@
     margin-bottom: 2rem;
 }
 
+.bsync-member-portal .bsync-member-account-links {
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
+}
+
 /* Simple styling for the member categories list shortcode */
 .bsync-member-category-list {
     margin: 2rem 0;
@@ -90,4 +95,29 @@
 .bsync-member-category-list-item a:hover,
 .bsync-member-category-list-item a:focus {
     background: #f0f0f0;
+}
+
+/* Styled member login form */
+.bsync-member-login {
+    max-width: 420px;
+    margin: 2rem auto;
+    padding: 1.75rem 2rem;
+    border-radius: 8px;
+    border: 1px solid #e2e2e2;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.bsync-member-login h2 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+.bsync-member-login form p {
+    margin-bottom: 1rem;
+}
+
+.bsync-member-login-reset {
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
 }

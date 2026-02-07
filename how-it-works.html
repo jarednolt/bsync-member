@@ -27,6 +27,13 @@
             <li>Shortcode <code>[bsync_member_portal]</code> shows a logged-in member:</li>
             <li>Their primary member page content.</li>
             <li>A list of their linked Fluent Forms submissions.</li>
+            <li>Links to log out and reset their password.</li>
+        </ul>
+    </li>
+    <li><strong>Member login shortcode</strong>
+        <ul>
+            <li>The shortcode <code>[bsync_member_login]</code> renders a styled login form for members.</li>
+            <li>You can pass an optional <code>redirect</code> attribute, for example <code>[bsync_member_login redirect="/your-portal-slug/"]</code> so members are taken straight to the portal after login.</li>
         </ul>
     </li>
 </ul>
@@ -97,7 +104,8 @@
 <ol>
     <li>Activate both <strong>Bsync Member</strong> and <strong>bsynce CRM</strong> plugins.</li>
     <li>In the WordPress admin, go to <strong>Bsync Members → Settings</strong> and choose the role and page labels that make sense for your site.</li>
-    <li>Create a new WordPress page and add the shortcode <code>[bsync_member_portal]</code>. This will be your member portal URL.</li>
+    <li>Create a new WordPress page for your member portal and add the shortcode <code>[bsync_member_portal]</code>.</li>
+    <li>Create a “Member Login” page and put <code>[bsync_member_login redirect="/your-portal-slug/"]</code> in it, replacing <code>/your-portal-slug/</code> with the actual URL path to the portal page.</li>
     <li>Optionally create a page with <code>[bsync_member_categories]</code> so members can see a list of all member categories.</li>
     <li>Use <strong>Bsync Members → Members</strong> to add or import member accounts.</li>
     <li>Use Fluent Forms for your public forms. As members submit forms, their entries will start appearing in the member portal and can be managed from the bsynce CRM dashboard.</li>
