@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: bsync.me
  * Text Domain: bsync-member
  */
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Basic plugin constants.
-define( 'BSYNC_MEMBER_VERSION', '0.1.0' );
+define( 'BSYNC_MEMBER_VERSION', '1.1.0' );
 define( 'BSYNC_MEMBER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'BSYNC_MEMBER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -225,6 +225,39 @@ function bsync_member_register_cpt_and_tax() {
 add_action( 'init', 'bsync_member_register_cpt_and_tax' );
 
 /**
+ * Prevent WooCommerce from removing capabilities from our Member Manager role.
+ */
+function bsync_member_protect_from_woocommerce( $role ) {
+    // Only protect our Member Manager role
+    if ( $role !== BSYNC_MEMBER_MANAGER_ROLE ) {
+        return $role;
+    }
+
+    // Re-ensure capabilities after any role modifications
+    $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
+    if ( $manager_role ) {
+        $manager_role->add_cap( 'read' );
+        $manager_role->add_cap( BSYNC_MEMBER_MANAGE_CAP );
+        $manager_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
+        $manager_role->add_cap( 'list_users' );
+        $manager_role->add_cap( 'edit_users' );
+        $manager_role->add_cap( 'promote_users' );
+        $manager_role->add_cap( 'create_users' );
+    }
+
+    return $role;
+}
+add_filter( 'editable_roles', 'bsync_member_protect_from_woocommerce', 999 );
+
+/**
+ * Run capability sync after WooCommerce and other plugins have loaded.
+ */
+function bsync_member_late_capability_sync() {
+    bsync_member_ensure_caps();
+}
+add_action( 'wp_loaded', 'bsync_member_late_capability_sync' );
+
+/**
  * Ensure the given role has capabilities for managing the Member Page CPT.
  *
  * This is called on activation but can safely be called at runtime as well.
@@ -265,15 +298,53 @@ function bsync_member_add_cpt_caps_to_role( $role_slug ) {
  * This helps recover if roles were edited externally.
  */
 function bsync_member_ensure_caps() {
+    // Create Member Manager role if it doesn't exist.
+    $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
+    if ( ! $manager_role ) {
+        $manager_display_name = get_option( 'bsync_member_manager_label', __( 'Member Manager', 'bsync-member' ) );
+        $manager_role = add_role(
+            BSYNC_MEMBER_MANAGER_ROLE,
+            $manager_display_name,
+            array(
+                'read'                  => true,
+                BSYNC_MEMBER_MANAGE_CAP => true,
+                BSYNC_MEMBER_PORTAL_CAP => true,
+                'list_users'            => true,
+                'edit_users'            => true,
+                'promote_users'         => true,
+                'create_users'          => true,
+            )
+        );
+    }
+
+    // Create Member role if it doesn't exist.
+    $member_role = get_role( BSYNC_MEMBER_ROLE );
+    if ( ! $member_role ) {
+        $member_display_name = get_option( 'bsync_member_label', __( 'Member', 'bsync-member' ) );
+        $member_role = add_role(
+            BSYNC_MEMBER_ROLE,
+            $member_display_name,
+            array(
+                'read'                  => true,
+                BSYNC_MEMBER_PORTAL_CAP => true,
+            )
+        );
+    }
+
+    // Add CPT capabilities to Member Manager.
     bsync_member_add_cpt_caps_to_role( BSYNC_MEMBER_MANAGER_ROLE );
-    // Ensure front-end portal capability stays attached.
+    
+    // Ensure front-end portal capability and user management stays attached.
     $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
     if ( $manager_role ) {
+        $manager_role->add_cap( 'read' );
+        $manager_role->add_cap( BSYNC_MEMBER_MANAGE_CAP );
         $manager_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
         $manager_role->add_cap( 'list_users' );
         $manager_role->add_cap( 'edit_users' );
         $manager_role->add_cap( 'promote_users' );
         $manager_role->add_cap( 'create_users' );
+        $manager_role->add_cap( 'manage_bsynce_crm' ); // CRM access
     }
 
     $member_role = get_role( BSYNC_MEMBER_ROLE );
@@ -290,7 +361,8 @@ function bsync_member_ensure_caps() {
         bsync_member_add_cpt_caps_to_role( 'administrator' );
     }
 }
-add_action( 'init', 'bsync_member_ensure_caps', 20 );
+// Priority 999 runs after WooCommerce (which runs at priority 10)
+add_action( 'init', 'bsync_member_ensure_caps', 999 );
 
 /**
  * Limit which roles a Member Manager can assign when creating or editing users.
@@ -315,7 +387,8 @@ function bsync_member_limit_editable_roles_for_manager( $roles ) {
 
     return $allowed;
 }
-add_filter( 'editable_roles', 'bsync_member_limit_editable_roles_for_manager' );
+// Run before WooCommerce to ensure our filtering takes precedence
+add_filter( 'editable_roles', 'bsync_member_limit_editable_roles_for_manager', 5 );
 
 /**
  * Prevent Member Managers from editing, deleting, or managing other users who have any manager capabilities.
@@ -413,6 +486,33 @@ function bsync_member_hide_managers_from_user_list( $query ) {
 add_action( 'pre_get_users', 'bsync_member_hide_managers_from_user_list' );
 
 /**
+ * Ensure Member Manager has user capabilities even if WooCommerce tries to remove them.
+ */
+function bsync_member_restore_user_caps( $allcaps, $caps, $args, $user ) {
+    // Only apply to Member Managers
+    if ( ! isset( $user->roles ) || ! in_array( BSYNC_MEMBER_MANAGER_ROLE, (array) $user->roles, true ) ) {
+        return $allcaps;
+    }
+
+    // Ensure Member Manager always has user management capabilities
+    $required_caps = array(
+        'list_users',
+        'edit_users',
+        'promote_users',
+        'create_users',
+        BSYNC_MEMBER_MANAGE_CAP,
+        BSYNC_MEMBER_PORTAL_CAP,
+    );
+
+    foreach ( $required_caps as $cap ) {
+        $allcaps[ $cap ] = true;
+    }
+
+    return $allcaps;
+}
+add_filter( 'user_has_cap', 'bsync_member_restore_user_caps', 999, 4 );
+
+/**
  * Admin menu: Bsync Members (Members list + Settings).
  */
 function bsync_member_register_admin_menu() {
@@ -486,6 +586,12 @@ function bsync_member_render_settings_page() {
 
     $notice = '';
 
+    // Handle manual role sync.
+    if ( ! empty( $_POST['bsync_member_sync_roles_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_sync_roles_nonce'], 'bsync_member_sync_roles' ) ) {
+        bsync_member_activate(); // Re-run activation to ensure all caps are in place
+        $notice = __( 'Roles and capabilities have been synchronized.', 'bsync-member' );
+    }
+
     if ( ! empty( $_POST['bsync_member_settings_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_settings_nonce'], 'bsync_member_save_settings' ) ) {
         $manager_label        = isset( $_POST['bsync_member_manager_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_manager_label'] ) ) : '';
         $member_label         = isset( $_POST['bsync_member_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_label'] ) ) : '';
@@ -538,8 +644,50 @@ function bsync_member_render_settings_page() {
     echo '<h1>' . esc_html__( 'Bsync Members Settings', 'bsync-member' ) . '</h1>';
 
     if ( $notice ) {
-        echo '<div class="notice notice-success"><p>' . esc_html( $notice ) . '</p></div>';
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $notice ) . '</p></div>';
     }
+
+    // Diagnostic information
+    echo '<div class="card" style="max-width: 800px; margin-bottom: 20px;">';
+    echo '<h2>' . esc_html__( 'Role Diagnostics', 'bsync-member' ) . '</h2>';
+    
+    $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
+    $member_role = get_role( BSYNC_MEMBER_ROLE );
+    
+    echo '<p><strong>' . esc_html__( 'Member Manager Role:', 'bsync-member' ) . '</strong> ';
+    if ( $manager_role ) {
+        echo '<span style="color: green;">✓ ' . esc_html__( 'Exists', 'bsync-member' ) . '</span>';
+        $key_caps = array( BSYNC_MEMBER_MANAGE_CAP, 'edit_users', 'list_users', 'edit_bsync_member_pages', 'manage_bsynce_crm' );
+        $missing_caps = array();
+        foreach ( $key_caps as $cap ) {
+            if ( ! $manager_role->has_cap( $cap ) ) {
+                $missing_caps[] = $cap;
+            }
+        }
+        if ( ! empty( $missing_caps ) ) {
+            echo '<br><span style="color: red;">⚠ ' . esc_html__( 'Missing capabilities:', 'bsync-member' ) . ' ' . esc_html( implode( ', ', $missing_caps ) ) . '</span>';
+        } else {
+            echo '<br><span style="color: green;">✓ ' . esc_html__( 'All key capabilities present', 'bsync-member' ) . '</span>';
+        }
+    } else {
+        echo '<span style="color: red;">✗ ' . esc_html__( 'Missing', 'bsync-member' ) . '</span>';
+    }
+    echo '</p>';
+    
+    echo '<p><strong>' . esc_html__( 'Member Role:', 'bsync-member' ) . '</strong> ';
+    if ( $member_role ) {
+        echo '<span style="color: green;">✓ ' . esc_html__( 'Exists', 'bsync-member' ) . '</span>';
+    } else {
+        echo '<span style="color: red;">✗ ' . esc_html__( 'Missing', 'bsync-member' ) . '</span>';
+    }
+    echo '</p>';
+    
+    echo '<form method="post" style="margin-top: 15px;">';
+    wp_nonce_field( 'bsync_member_sync_roles', 'bsync_member_sync_roles_nonce' );
+    echo '<p class="description">' . esc_html__( 'If roles or capabilities are missing or incorrect (especially after deploying to a live server), click this button to recreate and synchronize all roles and capabilities.', 'bsync-member' ) . '</p>';
+    submit_button( __( 'Sync Roles & Capabilities', 'bsync-member' ), 'secondary', 'submit', false );
+    echo '</form>';
+    echo '</div>';
 
     echo '<form method="post">';
     wp_nonce_field( 'bsync_member_save_settings', 'bsync_member_settings_nonce' );
@@ -1565,10 +1713,13 @@ function bsync_member_portal_shortcode() {
     if ( $submissions ) {
         // Collect form IDs to look up titles in one query.
         $form_ids = array();
+        $entry_ids = array();
         foreach ( $submissions as $submission ) {
             $form_ids[] = (int) $submission['form_id'];
+            $entry_ids[] = (int) $submission['id'];
         }
         $form_ids = array_values( array_unique( $form_ids ) );
+        $entry_ids = array_values( array_unique( $entry_ids ) );
 
         $form_titles = array();
         if ( $form_ids ) {
@@ -1587,19 +1738,50 @@ function bsync_member_portal_shortcode() {
             }
         }
 
+        // Get reply dates from CRM email logs if the CRM plugin is active.
+        $reply_dates = array();
+        if ( ! empty( $entry_ids ) ) {
+            $email_logs_table = $wpdb->prefix . 'bsynce_crm_email_logs';
+            // Check if the table exists.
+            if ( $wpdb->get_var( "SHOW TABLES LIKE '{$email_logs_table}'" ) === $email_logs_table ) {
+                $placeholders = implode( ',', array_fill( 0, count( $entry_ids ), '%d' ) );
+                $sql = $wpdb->prepare(
+                    "SELECT entry_id, MAX(created_at) as last_reply 
+                     FROM {$email_logs_table} 
+                     WHERE entry_id IN ($placeholders) AND status = 'sent'
+                     GROUP BY entry_id",
+                    $entry_ids
+                );
+                $rows = $wpdb->get_results( $sql, ARRAY_A );
+                if ( $rows ) {
+                    foreach ( $rows as $row ) {
+                        $reply_dates[ (int) $row['entry_id'] ] = $row['last_reply'];
+                    }
+                }
+            }
+        }
+
         echo '<table class="widefat fixed striped">';
         echo '<thead><tr>';
         echo '<th>' . esc_html__( 'Form', 'bsync-member' ) . '</th>';
         echo '<th>' . esc_html__( 'Submitted', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Replied', 'bsync-member' ) . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ( $submissions as $submission ) {
             $form_id    = (int) $submission['form_id'];
+            $entry_id   = (int) $submission['id'];
             $form_title = isset( $form_titles[ $form_id ] ) ? $form_titles[ $form_id ] : sprintf( __( 'Form #%d', 'bsync-member' ), $form_id );
+            
+            $reply_date = '';
+            if ( isset( $reply_dates[ $entry_id ] ) ) {
+                $reply_date = mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $reply_dates[ $entry_id ] );
+            }
 
             echo '<tr>';
             echo '<td>' . esc_html( $form_title ) . '</td>';
             echo '<td>' . esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $submission['created_at'] ) ) . '</td>';
+            echo '<td>' . ( $reply_date ? esc_html( $reply_date ) : '—' ) . '</td>';
             echo '</tr>';
         }
 
