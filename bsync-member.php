@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: bsync.me
  * Text Domain: bsync-member
  */
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Basic plugin constants.
-define( 'BSYNC_MEMBER_VERSION', '1.3.0' );
+define( 'BSYNC_MEMBER_VERSION', '1.3.1' );
 define( 'BSYNC_MEMBER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'BSYNC_MEMBER_URL', plugin_dir_url( __FILE__ ) );
 
