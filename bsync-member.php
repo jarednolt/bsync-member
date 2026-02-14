@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: bsync.me
  * Text Domain: bsync-member
  */
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Basic plugin constants.
-define( 'BSYNC_MEMBER_VERSION', '1.1.0' );
+define( 'BSYNC_MEMBER_VERSION', '1.2.0' );
 define( 'BSYNC_MEMBER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'BSYNC_MEMBER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -360,9 +360,77 @@ function bsync_member_ensure_caps() {
         $admin_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
         bsync_member_add_cpt_caps_to_role( 'administrator' );
     }
+
+    // Create WordPress roles for all member types.
+    $member_types = bsync_member_get_member_types();
+    if ( ! empty( $member_types ) ) {
+        foreach ( $member_types as $slug => $label ) {
+            $type_role = get_role( $slug );
+            if ( ! $type_role ) {
+                // Create the role if it doesn't exist.
+                $type_role = add_role(
+                    $slug,
+                    $label,
+                    array(
+                        'read'                  => true,
+                        BSYNC_MEMBER_PORTAL_CAP => true,
+                    )
+                );
+            }
+            // Ensure capabilities are set.
+            if ( $type_role ) {
+                $type_role->add_cap( 'read' );
+                $type_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
+            }
+        }
+    }
 }
 // Priority 999 runs after WooCommerce (which runs at priority 10)
 add_action( 'init', 'bsync_member_ensure_caps', 999 );
+
+/**
+ * Migrate users from old meta-based member types to WordPress roles.
+ * This is for backward compatibility when upgrading from the old system.
+ */
+function bsync_member_migrate_member_types_to_roles() {
+    // Only run once - check if migration has been done.
+    if ( get_option( 'bsync_member_types_migrated' ) ) {
+        return;
+    }
+
+    $member_types = bsync_member_get_member_types();
+    if ( empty( $member_types ) ) {
+        update_option( 'bsync_member_types_migrated', '1' );
+        return;
+    }
+
+    // Find all users with bsync_member_type meta.
+    $users = get_users( array(
+        'meta_key' => 'bsync_member_type',
+        'number'   => -1,
+    ) );
+
+    foreach ( $users as $user ) {
+        $member_type = get_user_meta( $user->ID, 'bsync_member_type', true );
+        $member_type = sanitize_key( $member_type );
+
+        // If this member type is a configured WordPress role, assign it.
+        if ( $member_type && isset( $member_types[ $member_type ] ) ) {
+            // Remove old base member role if they have it.
+            if ( in_array( BSYNC_MEMBER_ROLE, (array) $user->roles, true ) ) {
+                $user->remove_role( BSYNC_MEMBER_ROLE );
+            }
+            // Add the specific member type role.
+            $user->add_role( $member_type );
+            // Remove the old meta field since it's now redundant.
+            delete_user_meta( $user->ID, 'bsync_member_type' );
+        }
+    }
+
+    // Mark migration as complete.
+    update_option( 'bsync_member_types_migrated', '1' );
+}
+add_action( 'init', 'bsync_member_migrate_member_types_to_roles', 1000 );
 
 /**
  * Limit which roles a Member Manager can assign when creating or editing users.
@@ -378,9 +446,13 @@ function bsync_member_limit_editable_roles_for_manager( $roles ) {
     }
 
     $allowed = array();
+    
+    // Get all configured member types (which are now WordPress roles).
+    $member_types = bsync_member_get_member_types();
 
     foreach ( $roles as $role_key => $details ) {
-        if ( BSYNC_MEMBER_ROLE === $role_key ) {
+        // Allow base member role and all member type roles.
+        if ( BSYNC_MEMBER_ROLE === $role_key || isset( $member_types[ $role_key ] ) ) {
             $allowed[ $role_key ] = $details;
         }
     }
@@ -447,9 +519,10 @@ function bsync_member_prevent_manager_editing_managers( $caps, $cap, $user_id, $
 add_filter( 'map_meta_cap', 'bsync_member_prevent_manager_editing_managers', 10, 4 );
 
 /**
- * Exclude other Member Managers from the user list when a Member Manager is viewing it.
+ * Filter user list for Member Managers to only show users they can manage.
  *
- * This prevents Member Managers from seeing other managers in wp-admin/users.php.
+ * Member Managers should only see users with the Member role, excluding
+ * other managers, administrators, editors, and any other privileged roles.
  */
 function bsync_member_hide_managers_from_user_list( $query ) {
     // Only apply in admin area.
@@ -472,16 +545,14 @@ function bsync_member_hide_managers_from_user_list( $query ) {
         return;
     }
 
-    // Get all manager group roles.
-    $manager_groups = bsync_member_get_manager_groups();
-    $manager_roles = array( BSYNC_MEMBER_MANAGER_ROLE );
-    
-    foreach ( $manager_groups as $slug => $label ) {
-        $manager_roles[] = 'bsync_manager_' . $slug;
-    }
+    // Member Managers should only see users with member roles (member type roles).
+    // Get all member type roles plus the base member role.
+    $member_types = bsync_member_get_member_types();
+    $allowed_roles = array_keys( $member_types );
+    $allowed_roles[] = BSYNC_MEMBER_ROLE;
 
-    // Exclude users with any manager role from the query.
-    $query->set( 'role__not_in', $manager_roles );
+    // Use role__in to filter by any member role.
+    $query->set( 'role__in', $allowed_roles );
 }
 add_action( 'pre_get_users', 'bsync_member_hide_managers_from_user_list' );
 
@@ -574,6 +645,51 @@ function bsync_member_register_admin_menu() {
     );
 }
 add_action( 'admin_menu', 'bsync_member_register_admin_menu' );
+
+/**
+ * Reorder submenu items to ensure Members appears before Member Pages.
+ */
+function bsync_member_reorder_admin_menu() {
+    global $submenu;
+    
+    if ( ! isset( $submenu['bsync_members'] ) ) {
+        return;
+    }
+    
+    // Find the Member Pages item (added by CPT registration).
+    $member_pages_item = null;
+    $member_pages_key = null;
+    
+    foreach ( $submenu['bsync_members'] as $key => $item ) {
+        if ( $item[2] === 'edit.php?post_type=' . BSYNC_MEMBER_PAGE_CPT ) {
+            $member_pages_item = $item;
+            $member_pages_key = $key;
+            break;
+        }
+    }
+    
+    // If we found the Member Pages item, remove it.
+    if ( $member_pages_key !== null ) {
+        unset( $submenu['bsync_members'][ $member_pages_key ] );
+        
+        // Re-add it in the correct position (after Members, which is position 0).
+        // Insert at position 1 (right after Members).
+        $new_submenu = array();
+        $position = 0;
+        
+        foreach ( $submenu['bsync_members'] as $item ) {
+            $new_submenu[] = $item;
+            // After the first item (Members), insert Member Pages.
+            if ( $position === 0 ) {
+                $new_submenu[] = $member_pages_item;
+            }
+            $position++;
+        }
+        
+        $submenu['bsync_members'] = $new_submenu;
+    }
+}
+add_action( 'admin_menu', 'bsync_member_reorder_admin_menu', 999 );
 
 /**
  * Settings screen: rename roles, page type, and category type.
@@ -781,31 +897,66 @@ function bsync_member_render_members_page() {
     $allowed_member_types = bsync_member_get_allowed_member_types_for_current_user();
 
     // Fetch members that are managed by this plugin.
-    // We look for users who have the bsync_member_active meta flag so that
-    // deactivated members (who may no longer have the Member role) still
-    // appear in this table and can be reactivated later.
-    $meta_query = array(
-        array(
-            'key'     => 'bsync_member_active',
-            'compare' => 'EXISTS',
+    // Query for users who have any member type role (including the base member role).
+    // We need to find both active users (with roles) and deactivated users (who may only have the meta).
+    $all_member_types = bsync_member_get_member_types();
+    $query_roles = array_keys( $all_member_types );
+    $query_roles[] = BSYNC_MEMBER_ROLE;
+
+    $query_args = array(
+        'number'   => 200,
+        'role__in' => $query_roles,
+    );
+
+    $user_query = new WP_User_Query( $query_args );
+    $members_from_roles = $user_query->get_results();
+
+    // Also query for users with bsync_member_active meta (catches deactivated users).
+    $meta_query_args = array(
+        'number'     => 200,
+        'meta_query' => array(
+            array(
+                'key'     => 'bsync_member_active',
+                'compare' => 'EXISTS',
+            ),
         ),
     );
+    $meta_user_query = new WP_User_Query( $meta_query_args );
+    $members_from_meta = $meta_user_query->get_results();
 
-    if ( ! empty( $allowed_member_types ) ) {
-        $meta_query[] = array(
-            'key'     => 'bsync_member_type',
-            'value'   => array_values( $allowed_member_types ),
-            'compare' => 'IN',
-        );
+    // Merge and deduplicate the two result sets.
+    $all_members = array();
+    foreach ( $members_from_roles as $member ) {
+        $all_members[ $member->ID ] = $member;
     }
+    foreach ( $members_from_meta as $member ) {
+        $all_members[ $member->ID ] = $member;
+    }
+    $members = array_values( $all_members );
 
-    $user_query = new WP_User_Query(
-        array(
-            'number'     => 200,
-            'meta_query' => $meta_query,
-        )
-    );
-    $members = $user_query->get_results();
+    // Filter by allowed member types if restriction applies.
+    if ( ! empty( $allowed_member_types ) ) {
+        $filtered_members = array();
+        foreach ( $members as $member ) {
+            // Check if user has any of the allowed member type roles.
+            $user_roles = (array) $member->roles;
+            $has_allowed_role = false;
+            foreach ( $allowed_member_types as $allowed_type ) {
+                if ( in_array( $allowed_type, $user_roles, true ) ) {
+                    $has_allowed_role = true;
+                    break;
+                }
+            }
+            // Also check for base member role if they're active but don't have a specific type yet.
+            if ( ! $has_allowed_role && in_array( BSYNC_MEMBER_ROLE, $user_roles, true ) ) {
+                $has_allowed_role = true;
+            }
+            if ( $has_allowed_role ) {
+                $filtered_members[] = $member;
+            }
+        }
+        $members = $filtered_members;
+    }
 
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__( 'Bsync Members', 'bsync-member' ) . '</h1>';
@@ -1014,8 +1165,7 @@ function bsync_member_protect_member_pages() {
                     $allowed_types = array_values( array_filter( array_map( 'sanitize_key', $allowed_types ) ) );
 
                     if ( ! empty( $allowed_types ) ) {
-                        $user_type = get_user_meta( get_current_user_id(), 'bsync_member_type', true );
-                        $user_type = sanitize_key( $user_type );
+                        $user_type = bsync_member_get_user_member_type( get_current_user_id() );
 
                         if ( ! $user_type || ! in_array( $user_type, $allowed_types, true ) ) {
                             // User is logged in but not allowed to view this page; show 404.
@@ -1064,8 +1214,7 @@ function bsync_member_protect_member_pages() {
                     $allowed_types = array_values( array_filter( array_map( 'sanitize_key', $allowed_types ) ) );
 
                     if ( ! empty( $allowed_types ) ) {
-                        $user_type = get_user_meta( get_current_user_id(), 'bsync_member_type', true );
-                        $user_type = sanitize_key( $user_type );
+                        $user_type = bsync_member_get_user_member_type( get_current_user_id() );
 
                         if ( ! $user_type || ! in_array( $user_type, $allowed_types, true ) ) {
                             // Logged-in member but not allowed for this member page.
@@ -1095,10 +1244,9 @@ function bsync_member_filter_adjacent_post( $where, $in_same_term, $excluded_ter
         return $where;
     }
 
-    // Get user's member type.
+    // Get user's member type from their WordPress role.
     $user_id = get_current_user_id();
-    $user_type = get_user_meta( $user_id, 'bsync_member_type', true );
-    $user_type = sanitize_key( $user_type );
+    $user_type = bsync_member_get_user_member_type( $user_id );
 
     global $wpdb;
 
@@ -1553,7 +1701,7 @@ function bsync_member_portal_shortcode() {
     $submissions = bsync_member_get_submissions_for_user( $user_id, 50 );
 
     // Get the current user's member type to filter pages.
-    $user_member_type = get_user_meta( $user_id, 'bsync_member_type', true );
+    $user_member_type = bsync_member_get_user_member_type( $user_id );
     $user_roles = (array) $user->roles;
 
     // Query for member pages visible to this user.
@@ -1870,6 +2018,36 @@ function bsync_member_get_member_types() {
 }
 
 /**
+ * Get a user's member type(s) from their WordPress role(s).
+ * Member types are now WordPress roles, so we check which member type roles the user has.
+ *
+ * @param int $user_id User ID.
+ * @return string The first matching member type role slug, or empty string if none found.
+ */
+function bsync_member_get_user_member_type( $user_id ) {
+    $user = get_user_by( 'id', $user_id );
+    if ( ! $user ) {
+        return '';
+    }
+
+    $member_types = bsync_member_get_member_types();
+    if ( empty( $member_types ) ) {
+        return '';
+    }
+
+    $user_roles = (array) $user->roles;
+    
+    // Check if user has any member type role.
+    foreach ( $user_roles as $role ) {
+        if ( isset( $member_types[ $role ] ) ) {
+            return $role;
+        }
+    }
+
+    return '';
+}
+
+/**
  * Parse configured manager groups from settings.
  *
  * Stored in bsync_member_manager_groups_def as one per line,
@@ -2074,34 +2252,33 @@ function bsync_member_show_user_fields( $user ) {
     $member_types   = bsync_member_get_member_types();
     $manager_groups = bsync_member_get_manager_groups();
 
-    if ( empty( $member_types ) && empty( $manager_groups ) ) {
+    if ( empty( $manager_groups ) ) {
         return;
     }
 
-    $user_member_type   = sanitize_key( get_user_meta( $user->ID, 'bsync_member_type', true ) );
-    $user_manager_group = sanitize_key( get_user_meta( $user->ID, 'bsync_member_manager_group', true ) );
+    // Handle both existing user profiles and new user form
+    // On user_new_form, $user is a string; on edit/show_user_profile, it's a WP_User object
+    $user_manager_group = '';
+    $is_new_user = is_string( $user );
+    
+    if ( ! $is_new_user && isset( $user->ID ) ) {
+        $user_manager_group = sanitize_key( get_user_meta( $user->ID, 'bsync_member_manager_group', true ) );
+    }
 
     echo '<h2>' . esc_html__( 'Bsync Member Settings', 'bsync-member' ) . '</h2>';
     echo '<table class="form-table" role="presentation">';
 
+    // Note: Member types are now WordPress roles - assign them via the Role dropdown above.
     if ( ! empty( $member_types ) ) {
-        echo '<tr><th><label for="bsync_member_type">' . esc_html__( 'Member type', 'bsync-member' ) . '</label></th><td>';
-        echo '<select name="bsync_member_type" id="bsync_member_type">';
-        echo '<option value="">' . esc_html__( '— None / not set —', 'bsync-member' ) . '</option>';
-        foreach ( $member_types as $slug => $label ) {
-            printf(
-                '<option value="%s" %s>%s</option>',
-                esc_attr( $slug ),
-                selected( $user_member_type, $slug, false ),
-                esc_html( $label )
-            );
-        }
-        echo '</select>';
-        echo '<p class="description">' . esc_html__( 'Controls which restricted pages and which manager groups this member is associated with.', 'bsync-member' ) . '</p>';
+        echo '<tr><td colspan=\"2\">';
+        echo '<p class=\"description\">' . esc_html__( 'Member types (Camp member, CASY member, etc.) are now WordPress roles. Assign them using the "Role" dropdown above.', 'bsync-member' ) . '</p>';
         echo '</td></tr>';
     }
 
-    if ( ! empty( $manager_groups ) && user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) ) {
+    // For existing users, check if they have the capability; for new users, always show the field
+    $show_manager_field = $is_new_user || ( ! empty( $manager_groups ) && user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) );
+    
+    if ( ! empty( $manager_groups ) && $show_manager_field ) {
         echo '<tr><th><label for="bsync_member_manager_group">' . esc_html__( 'Member manager group', 'bsync-member' ) . '</label></th><td>';
         echo '<select name="bsync_member_manager_group" id="bsync_member_manager_group">';
         echo '<option value="">' . esc_html__( '— None / global —', 'bsync-member' ) . '</option>';
@@ -2122,6 +2299,7 @@ function bsync_member_show_user_fields( $user ) {
 }
 add_action( 'show_user_profile', 'bsync_member_show_user_fields' );
 add_action( 'edit_user_profile', 'bsync_member_show_user_fields' );
+add_action( 'user_new_form', 'bsync_member_show_user_fields' );
 
 /**
  * Save Bsync Member user profile fields.
@@ -2131,14 +2309,8 @@ function bsync_member_save_user_fields( $user_id ) {
         return;
     }
 
-    if ( isset( $_POST['bsync_member_type'] ) ) {
-        $type = sanitize_key( wp_unslash( $_POST['bsync_member_type'] ) );
-        if ( $type ) {
-            update_user_meta( $user_id, 'bsync_member_type', $type );
-        } else {
-            delete_user_meta( $user_id, 'bsync_member_type' );
-        }
-    }
+    // Note: Member types are now WordPress roles, saved automatically via the Role dropdown.
+    // We only need to handle the manager group assignment here.
 
     if ( isset( $_POST['bsync_member_manager_group'] ) ) {
         $group = sanitize_key( wp_unslash( $_POST['bsync_member_manager_group'] ) );
@@ -2157,6 +2329,7 @@ function bsync_member_save_user_fields( $user_id ) {
 }
 add_action( 'personal_options_update', 'bsync_member_save_user_fields' );
 add_action( 'edit_user_profile_update', 'bsync_member_save_user_fields' );
+add_action( 'user_register', 'bsync_member_save_user_fields' );
 
 /**
  * Add a visibility meta box to regular WordPress pages and member pages so
@@ -2358,6 +2531,13 @@ function bsync_member_render_roles_page() {
                         $label = $old_label;
                     }
                     $new_labels[ $slug ] = $label;
+
+                    // Update the WordPress role display name.
+                    global $wp_roles;
+                    if ( isset( $wp_roles->roles[ $slug ] ) ) {
+                        $wp_roles->roles[ $slug ]['name'] = $label;
+                        update_option( $wp_roles->role_key, $wp_roles->roles );
+                    }
                 } else {
                     $new_labels[ $slug ] = $old_label;
                 }
@@ -2408,7 +2588,18 @@ function bsync_member_render_roles_page() {
                         $lines[] = $s . '|' . $l;
                     }
                     update_option( 'bsync_member_member_types_def', implode( "\n", $lines ) );
-                    $notice = __( 'Member type added.', 'bsync-member' );
+
+                    // Create the WordPress role immediately.
+                    add_role(
+                        $slug,
+                        $label,
+                        array(
+                            'read'                  => true,
+                            BSYNC_MEMBER_PORTAL_CAP => true,
+                        )
+                    );
+
+                    $notice = __( 'Member type added and WordPress role created.', 'bsync-member' );
                 } else {
                     $notice = __( 'That member type already exists.', 'bsync-member' );
                 }
