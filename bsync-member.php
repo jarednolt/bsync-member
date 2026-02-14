@@ -1802,15 +1802,15 @@ function bsync_member_portal_shortcode() {
             }
         }
 
-        // Get reply dates from CRM email logs if the CRM plugin is active.
-        $reply_dates = array();
+        // Get reply dates and counts from CRM email logs if the CRM plugin is active.
+        $reply_data = array();
         if ( ! empty( $entry_ids ) ) {
             $email_logs_table = $wpdb->prefix . 'bsynce_crm_email_logs';
             // Check if the table exists.
             if ( $wpdb->get_var( "SHOW TABLES LIKE '{$email_logs_table}'" ) === $email_logs_table ) {
                 $placeholders = implode( ',', array_fill( 0, count( $entry_ids ), '%d' ) );
                 $sql = $wpdb->prepare(
-                    "SELECT entry_id, MAX(created_at) as last_reply 
+                    "SELECT entry_id, MAX(created_at) as last_reply, COUNT(id) as reply_count
                      FROM {$email_logs_table} 
                      WHERE entry_id IN ($placeholders) AND status = 'sent'
                      GROUP BY entry_id",
@@ -1819,7 +1819,10 @@ function bsync_member_portal_shortcode() {
                 $rows = $wpdb->get_results( $sql, ARRAY_A );
                 if ( $rows ) {
                     foreach ( $rows as $row ) {
-                        $reply_dates[ (int) $row['entry_id'] ] = $row['last_reply'];
+                        $reply_data[ (int) $row['entry_id'] ] = array(
+                            'last_reply' => $row['last_reply'],
+                            'reply_count' => (int) $row['reply_count'],
+                        );
                     }
                 }
             }
@@ -1837,15 +1840,25 @@ function bsync_member_portal_shortcode() {
             $entry_id   = (int) $submission['id'];
             $form_title = isset( $form_titles[ $form_id ] ) ? $form_titles[ $form_id ] : sprintf( __( 'Form #%d', 'bsync-member' ), $form_id );
             
-            $reply_date = '';
-            if ( isset( $reply_dates[ $entry_id ] ) ) {
-                $reply_date = mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $reply_dates[ $entry_id ] );
+            $reply_display = '—';
+            if ( isset( $reply_data[ $entry_id ] ) ) {
+                $reply_count = $reply_data[ $entry_id ]['reply_count'];
+                $reply_date = mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $reply_data[ $entry_id ]['last_reply'] );
+                
+                if ( $reply_count > 0 ) {
+                    $reply_display = sprintf(
+                        '<strong>%d</strong> %s<br>%s',
+                        $reply_count,
+                        _n( 'reply', 'replies', $reply_count, 'bsync-member' ),
+                        esc_html( $reply_date )
+                    );
+                }
             }
 
             echo '<tr>';
             echo '<td>' . esc_html( $form_title ) . '</td>';
             echo '<td>' . esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $submission['created_at'] ) ) . '</td>';
-            echo '<td>' . ( $reply_date ? esc_html( $reply_date ) : '—' ) . '</td>';
+            echo '<td>' . $reply_display . '</td>';
             echo '</tr>';
         }
 
