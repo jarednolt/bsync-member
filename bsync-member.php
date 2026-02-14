@@ -318,13 +318,14 @@ function bsync_member_limit_editable_roles_for_manager( $roles ) {
 add_filter( 'editable_roles', 'bsync_member_limit_editable_roles_for_manager' );
 
 /**
- * Prevent Member Managers from editing other users who have any manager capabilities.
+ * Prevent Member Managers from editing, deleting, or managing other users who have any manager capabilities.
  *
  * This ensures member managers can only edit regular members, not other managers.
  */
 function bsync_member_prevent_manager_editing_managers( $caps, $cap, $user_id, $args ) {
-    // Only apply to edit_user capability checks.
-    if ( 'edit_user' !== $cap ) {
+    // Only apply to user management capability checks.
+    $restricted_caps = array( 'edit_user', 'delete_user', 'remove_user', 'promote_user' );
+    if ( ! in_array( $cap, $restricted_caps, true ) ) {
         return $caps;
     }
 
@@ -371,6 +372,45 @@ function bsync_member_prevent_manager_editing_managers( $caps, $cap, $user_id, $
     return $caps;
 }
 add_filter( 'map_meta_cap', 'bsync_member_prevent_manager_editing_managers', 10, 4 );
+
+/**
+ * Exclude other Member Managers from the user list when a Member Manager is viewing it.
+ *
+ * This prevents Member Managers from seeing other managers in wp-admin/users.php.
+ */
+function bsync_member_hide_managers_from_user_list( $query ) {
+    // Only apply in admin area.
+    if ( ! is_admin() ) {
+        return;
+    }
+
+    // Only apply to user queries, not other query types.
+    if ( ! $query instanceof WP_User_Query ) {
+        return;
+    }
+
+    // Administrators can see everyone.
+    if ( current_user_can( 'administrator' ) ) {
+        return;
+    }
+
+    // Only affect Member Managers.
+    if ( ! current_user_can( BSYNC_MEMBER_MANAGE_CAP ) ) {
+        return;
+    }
+
+    // Get all manager group roles.
+    $manager_groups = bsync_member_get_manager_groups();
+    $manager_roles = array( BSYNC_MEMBER_MANAGER_ROLE );
+    
+    foreach ( $manager_groups as $slug => $label ) {
+        $manager_roles[] = 'bsync_manager_' . $slug;
+    }
+
+    // Exclude users with any manager role from the query.
+    $query->set( 'role__not_in', $manager_roles );
+}
+add_action( 'pre_get_users', 'bsync_member_hide_managers_from_user_list' );
 
 /**
  * Admin menu: Bsync Members (Members list + Settings).
@@ -979,6 +1019,108 @@ function bsync_member_protect_member_pages() {
 add_action( 'template_redirect', 'bsync_member_protect_member_pages' );
 
 /**
+ * Filter adjacent post links to only show member pages the current user can access.
+ * This ensures next/previous navigation respects role visibility settings.
+ */
+function bsync_member_filter_adjacent_post( $where, $in_same_term, $excluded_terms, $taxonomy, $post ) {
+    if ( ! $post || BSYNC_MEMBER_PAGE_CPT !== $post->post_type ) {
+        return $where;
+    }
+
+    if ( ! is_user_logged_in() ) {
+        return $where;
+    }
+
+    // Get user's member type.
+    $user_id = get_current_user_id();
+    $user_type = get_user_meta( $user_id, 'bsync_member_type', true );
+    $user_type = sanitize_key( $user_type );
+
+    global $wpdb;
+
+    // Build a subquery to exclude posts the user can't access.
+    $exclude_ids = array();
+    
+    // Query all published member pages.
+    $all_pages = get_posts( array(
+        'post_type'      => BSYNC_MEMBER_PAGE_CPT,
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+    ) );
+
+    foreach ( $all_pages as $page_id ) {
+        $visibility = get_post_meta( $page_id, 'bsync_member_page_visibility', true );
+        
+        // Check if user can access this page.
+        $can_access = false;
+        
+        if ( 'public' === $visibility || empty( $visibility ) ) {
+            $can_access = true;
+        } elseif ( 'members' === $visibility ) {
+            $can_access = true;
+        } elseif ( 'member_types' === $visibility ) {
+            $allowed_types = get_post_meta( $page_id, 'bsync_member_page_member_types', true );
+            if ( is_array( $allowed_types ) && ! empty( $allowed_types ) && $user_type ) {
+                if ( in_array( $user_type, $allowed_types, true ) ) {
+                    $can_access = true;
+                }
+            } elseif ( empty( $allowed_types ) ) {
+                $can_access = true;
+            }
+        }
+        
+        if ( ! $can_access ) {
+            $exclude_ids[] = (int) $page_id;
+        }
+    }
+
+    // Add excluded IDs to the where clause.
+    if ( ! empty( $exclude_ids ) ) {
+        $excluded_ids_str = implode( ',', array_map( 'absint', $exclude_ids ) );
+        $where .= " AND p.ID NOT IN ({$excluded_ids_str})";
+    }
+
+    return $where;
+}
+add_filter( 'get_next_post_where', 'bsync_member_filter_adjacent_post', 10, 5 );
+add_filter( 'get_previous_post_where', 'bsync_member_filter_adjacent_post', 10, 5 );
+
+/**
+ * Add "Back to Member Portal" link at the top of member pages.
+ */
+function bsync_member_add_portal_link( $content ) {
+    if ( ! is_singular( BSYNC_MEMBER_PAGE_CPT ) ) {
+        return $content;
+    }
+
+    if ( ! is_user_logged_in() ) {
+        return $content;
+    }
+
+    // Find the member portal page by looking for the shortcode.
+    $portal_url = '';
+    $pages = get_pages();
+    foreach ( $pages as $page ) {
+        if ( has_shortcode( $page->post_content, 'bsync_member_portal' ) ) {
+            $portal_url = get_permalink( $page->ID );
+            break;
+        }
+    }
+
+    if ( ! $portal_url ) {
+        return $content;
+    }
+
+    $back_link = '<div class="bsync-member-back-link">';
+    $back_link .= '<a href="' . esc_url( $portal_url ) . '">&larr; ' . esc_html__( 'Back to Member Portal', 'bsync-member' ) . '</a>';
+    $back_link .= '</div>';
+
+    return $back_link . $content . $back_link;
+}
+add_filter( 'the_content', 'bsync_member_add_portal_link' );
+
+/**
  * Ensure member pages and member category archives are not indexed by search
  * engines even though they are viewable on the front end for logged-in
  * members.
@@ -1346,9 +1488,65 @@ function bsync_member_portal_shortcode() {
 
     $submissions = bsync_member_get_submissions_for_user( $user_id, 50 );
 
+    // Get the current user's member type to filter pages.
+    $user_member_type = get_user_meta( $user_id, 'bsync_member_type', true );
+    $user_roles = (array) $user->roles;
+
+    // Query for member pages visible to this user.
+    $args = array(
+        'post_type'      => BSYNC_MEMBER_PAGE_CPT,
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'orderby'        => 'menu_order title',
+        'order'          => 'ASC',
+    );
+    $member_pages = get_posts( $args );
+
+    // Filter pages based on visibility settings.
+    $visible_pages = array();
+    foreach ( $member_pages as $member_page ) {
+        $visibility = get_post_meta( $member_page->ID, 'bsync_member_page_visibility', true );
+        
+        if ( 'public' === $visibility || empty( $visibility ) ) {
+            $visible_pages[] = $member_page;
+        } elseif ( 'members' === $visibility ) {
+            // All members can see it.
+            $visible_pages[] = $member_page;
+        } elseif ( 'member_types' === $visibility ) {
+            $allowed_types = get_post_meta( $member_page->ID, 'bsync_member_page_member_types', true );
+            if ( is_array( $allowed_types ) && ! empty( $allowed_types ) && $user_member_type ) {
+                if ( in_array( $user_member_type, $allowed_types, true ) ) {
+                    $visible_pages[] = $member_page;
+                }
+            } elseif ( empty( $allowed_types ) ) {
+                // No types selected means all members can see it.
+                $visible_pages[] = $member_page;
+            }
+        }
+    }
+
     ob_start();
 
     echo '<div class="bsync-member-portal">';
+
+    // Member pages menu section - at the very top.
+    if ( ! empty( $visible_pages ) ) {
+        echo '<div class="bsync-member-section bsync-member-menu">';
+        echo '<h3>' . esc_html__( 'Menu', 'bsync-member' ) . '</h3>';
+        echo '<nav class="bsync-member-menu-nav">';
+        echo '<ul class="bsync-member-menu-list">';
+        foreach ( $visible_pages as $member_page ) {
+            printf(
+                '<li class="bsync-member-menu-item"><a href="%s">%s</a></li>',
+                esc_url( get_permalink( $member_page->ID ) ),
+                esc_html( get_the_title( $member_page ) )
+            );
+        }
+        echo '</ul>';
+        echo '</nav>';
+        echo '</div>';
+    }
+
     echo '<h2>' . esc_html__( 'Member Portal', 'bsync-member' ) . '</h2>';
     echo '<p>' . sprintf( esc_html__( 'Welcome, %s', 'bsync-member' ), esc_html( $user->display_name ) ) . '</p>';
 
@@ -1359,17 +1557,6 @@ function bsync_member_portal_shortcode() {
     echo ' &middot; ';
     echo '<a href="' . esc_url( $reset_url ) . '">' . esc_html__( 'Reset password', 'bsync-member' ) . '</a>';
     echo '</p>';
-
-    // Member page section.
-    echo '<div class="bsync-member-section bsync-member-page">';
-    echo '<h3>' . esc_html__( 'My Member Page', 'bsync-member' ) . '</h3>';
-    if ( $page && BSYNC_MEMBER_PAGE_CPT === $page->post_type ) {
-        echo '<h4>' . esc_html( get_the_title( $page ) ) . '</h4>';
-        echo '<div class="bsync-member-page-content">' . apply_filters( 'the_content', $page->post_content ) . '</div>';
-    } else {
-        echo '<p>' . esc_html__( 'Your member page has not been created yet.', 'bsync-member' ) . '</p>';
-    }
-    echo '</div>';
 
     // Submissions section.
     echo '<div class="bsync-member-section bsync-member-submissions">';

@@ -69,6 +69,81 @@
     font-size: 0.95rem;
 }
 
+/* Back to Member Portal link styling */
+.bsync-member-back-link {
+    margin: 1rem 0;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e2e2e2;
+}
+
+.bsync-member-back-link a {
+    text-decoration: none;
+    color: #0073aa;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.bsync-member-back-link a:hover,
+.bsync-member-back-link a:focus {
+    color: #005177;
+    text-decoration: underline;
+}
+
+/* Member menu styling - horizontal navigation */
+.bsync-member-menu {
+    background: #f8f9fa;
+    border: 1px solid #e2e2e2;
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.bsync-member-menu h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    color: #333;
+}
+
+.bsync-member-menu-nav {
+    display: block;
+}
+
+.bsync-member-menu-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.bsync-member-menu-item {
+    margin: 0;
+    padding: 0;
+}
+
+.bsync-member-menu-item a {
+    display: inline-block;
+    padding: 0.6rem 1.25rem;
+    background: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #333;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+}
+
+.bsync-member-menu-item a:hover,
+.bsync-member-menu-item a:focus {
+    background: #0073aa;
+    color: #ffffff;
+    border-color: #0073aa;
+    text-decoration: none;
+}
+
 /* Simple styling for the member categories list shortcode */
 .bsync-member-category-list {
     margin: 2rem 0;
