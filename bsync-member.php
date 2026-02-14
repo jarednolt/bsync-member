@@ -738,66 +738,6 @@ function bsync_member_render_members_page() {
     $notice = '';
     $error  = '';
 
-    // Handle add member form submission.
-    if ( ! empty( $_POST['bsync_member_add_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_add_nonce'], 'bsync_member_add_member' ) ) {
-        $email      = isset( $_POST['bsync_member_email'] ) ? sanitize_email( wp_unslash( $_POST['bsync_member_email'] ) ) : '';
-        $first_name = isset( $_POST['bsync_member_first_name'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_first_name'] ) ) : '';
-        $last_name  = isset( $_POST['bsync_member_last_name'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_last_name'] ) ) : '';
-        $send_email = ! empty( $_POST['bsync_member_send_email'] );
-
-        if ( ! $email ) {
-            $error = __( 'Please provide a valid email address.', 'bsync-member' );
-        } else {
-            $existing = get_user_by( 'email', $email );
-
-            if ( $existing ) {
-                $existing->add_role( BSYNC_MEMBER_ROLE );
-                update_user_meta( $existing->ID, 'bsync_member_active', 1 );
-                $notice = __( 'Existing user updated to Member.', 'bsync-member' );
-            } else {
-                // Generate a username from email prefix, ensure uniqueness.
-                $username_base = sanitize_user( current( explode( '@', $email ) ), true );
-                if ( ! $username_base ) {
-                    $username_base = 'bsync_member';
-                }
-
-                $username = $username_base;
-                $suffix   = 1;
-                while ( username_exists( $username ) ) {
-                    $username = $username_base . $suffix;
-                    $suffix++;
-                }
-
-                $password = wp_generate_password( 12, false );
-
-                $user_id = wp_insert_user(
-                    array(
-                        'user_login' => $username,
-                        'user_pass'  => $password,
-                        'user_email' => $email,
-                        'first_name' => $first_name,
-                        'last_name'  => $last_name,
-                        'role'       => BSYNC_MEMBER_ROLE,
-                    )
-                );
-
-                if ( is_wp_error( $user_id ) ) {
-                    $error = $user_id->get_error_message();
-                } else {
-                    update_user_meta( $user_id, 'bsync_member_active', 1 );
-                    $notice = __( 'New Member created.', 'bsync-member' );
-
-                    if ( $send_email ) {
-                        // Send the standard WP new user notification to the user.
-                        if ( function_exists( 'wp_send_new_user_notifications' ) ) {
-                            wp_send_new_user_notifications( $user_id, 'user' );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // Handle member row actions (deactivate, activate, delete, reset password).
     if ( isset( $_GET['action'], $_GET['user_id'], $_GET['_wpnonce'] ) ) {
         $action  = sanitize_key( wp_unslash( $_GET['action'] ) );
@@ -888,34 +828,10 @@ function bsync_member_render_members_page() {
         esc_html( $member_label )
     ) . '</em></p>';
 
-    echo '<h2>' . esc_html__( 'Add New Member', 'bsync-member' ) . '</h2>';
-    echo '<form method="post" style="max-width:600px;">';
-    wp_nonce_field( 'bsync_member_add_member', 'bsync_member_add_nonce' );
+    $add_user_url = admin_url( 'user-new.php' );
+    echo '<p><a href="' . esc_url( $add_user_url ) . '" class="button button-primary">' . esc_html__( 'Add Member', 'bsync-member' ) . '</a></p>';
 
-    echo '<table class="form-table" role="presentation">';
-
-    echo '<tr><th scope="row"><label for="bsync_member_email">' . esc_html__( 'Email', 'bsync-member' ) . '</label></th><td>';
-    echo '<input type="email" required class="regular-text" name="bsync_member_email" id="bsync_member_email" />';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_first_name">' . esc_html__( 'First Name', 'bsync-member' ) . '</label></th><td>';
-    echo '<input type="text" class="regular-text" name="bsync_member_first_name" id="bsync_member_first_name" />';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_last_name">' . esc_html__( 'Last Name', 'bsync-member' ) . '</label></th><td>';
-    echo '<input type="text" class="regular-text" name="bsync_member_last_name" id="bsync_member_last_name" />';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row">' . esc_html__( 'Email login link', 'bsync-member' ) . '</th><td>';
-    echo '<label><input type="checkbox" name="bsync_member_send_email" value="1" /> ' . esc_html__( 'Email the user a login link / password setup.', 'bsync-member' ) . '</label>';
-    echo '</td></tr>';
-
-    echo '</table>';
-
-    submit_button( __( 'Add Member', 'bsync-member' ) );
-    echo '</form>';
-
-    echo '<h2 style="margin-top:40px;">' . esc_html__( 'Existing Members', 'bsync-member' ) . '</h2>';
+    echo '<h2 style="margin-top:20px;">' . esc_html__( 'Existing Members', 'bsync-member' ) . '</h2>';
 
     // Admins can filter by member type; managers are limited to their mapped types.
     $all_member_types = bsync_member_get_member_types();
