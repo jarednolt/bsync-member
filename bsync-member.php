@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.3.1
+ * Version: 1.3.2
  * Author: bsync.me
  * Text Domain: bsync-member
  */
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Basic plugin constants.
-define( 'BSYNC_MEMBER_VERSION', '1.3.1' );
+define( 'BSYNC_MEMBER_VERSION', '1.3.2' );
 define( 'BSYNC_MEMBER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'BSYNC_MEMBER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1575,66 +1575,6 @@ function bsync_member_link_entry_to_member( $entry, $user_id ) {
             ),
             array( '%d', '%d', '%s', '%d', '%s', '%s', '%s' )
         );
-    }
-
-    // Ensure the member has a primary member page and link the entry to it.
-    $page_id = (int) get_user_meta( $user_id, 'bsync_member_page_id', true );
-    $page    = $page_id ? get_post( $page_id ) : null;
-
-    if ( ! $page || BSYNC_MEMBER_PAGE_CPT !== $page->post_type ) {
-        $display_name = $user ? $user->display_name : __( 'Member', 'bsync-member' );
-        $page_title   = sprintf( __( "%s's Member Page", 'bsync-member' ), $display_name );
-
-        $page_id = wp_insert_post(
-            array(
-                'post_type'   => BSYNC_MEMBER_PAGE_CPT,
-                'post_status' => 'publish',
-                'post_title'  => $page_title,
-                'post_author' => $user_id,
-            )
-        );
-
-        if ( $page_id && ! is_wp_error( $page_id ) ) {
-            update_user_meta( $user_id, 'bsync_member_page_id', (int) $page_id );
-        }
-    }
-
-    if ( $page_id && ! is_wp_error( $page_id ) ) {
-        $existing_page_meta = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM {$meta_table} WHERE response_id = %d AND form_id = %d AND meta_key = %s",
-                $entry_id,
-                $form_id,
-                'bsync_member_page_id'
-            )
-        );
-
-        if ( $existing_page_meta ) {
-            $wpdb->update(
-                $meta_table,
-                array(
-                    'value'      => $page_id,
-                    'updated_at' => $now,
-                ),
-                array( 'id' => $existing_page_meta ),
-                array( '%d', '%s' ),
-                array( '%d' )
-            );
-        } else {
-            $wpdb->insert(
-                $meta_table,
-                array(
-                    'response_id' => $entry_id,
-                    'form_id'     => $form_id,
-                    'meta_key'    => 'bsync_member_page_id',
-                    'value'       => $page_id,
-                    'status'      => 'active',
-                    'created_at'  => $now,
-                    'updated_at'  => $now,
-                ),
-                array( '%d', '%d', '%s', '%d', '%s', '%s', '%s' )
-            );
-        }
     }
 }
 
