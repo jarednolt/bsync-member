@@ -1063,149 +1063,13 @@ function bsync_member_render_settings_tab() {
     }
 
     if ( ! empty( $_POST['bsync_member_settings_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_settings_nonce'], 'bsync_member_save_settings' ) ) {
-        $manager_label         = isset( $_POST['bsync_member_manager_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_manager_label'] ) ) : '';
-        $group_manager_label   = isset( $_POST['bsync_member_group_manager_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_group_manager_label'] ) ) : '';
-        $member_label          = isset( $_POST['bsync_member_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_label'] ) ) : '';
-        $page_label            = isset( $_POST['bsync_member_page_type_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_page_type_label'] ) ) : '';
-        $page_label_plural     = isset( $_POST['bsync_member_page_type_label_plural'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_page_type_label_plural'] ) ) : '';
-        $category_label        = isset( $_POST['bsync_member_category_type_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_category_type_label'] ) ) : '';
-        $category_label_plural = isset( $_POST['bsync_member_category_type_label_plural'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_category_type_label_plural'] ) ) : '';
-
-        // Create/update Member Admin Manager role when label is entered.
-        if ( $manager_label ) {
-            update_option( 'bsync_member_manager_label', $manager_label );
-            
-            $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
-            if ( ! $manager_role ) {
-                // Create the role.
-                $admin_manager_can_create_members = get_option( 'bsync_admin_manager_can_create_members', 0 );
-                $capabilities = array(
-                    'read'                  => true,
-                    BSYNC_MEMBER_MANAGE_CAP => true,
-                    BSYNC_MEMBER_PORTAL_CAP => true,
-                    'list_users'            => true,
-                    'edit_users'            => true,
-                    'promote_users'         => true,
-                    'manage_bsynce_crm'     => true,
-                );
-                if ( $admin_manager_can_create_members ) {
-                    $capabilities['create_users'] = true;
-                }
-                $manager_role = add_role( BSYNC_MEMBER_MANAGER_ROLE, $manager_label, $capabilities );
-                
-                // Add CPT capabilities.
-                bsync_member_add_cpt_caps_to_role( BSYNC_MEMBER_MANAGER_ROLE );
-            } else {
-                // Update the role display name.
-                global $wp_roles;
-                $wp_roles->roles[ BSYNC_MEMBER_MANAGER_ROLE ]['name'] = $manager_label;
-                update_option( $wp_roles->role_key, $wp_roles->roles );
-            }
-        }
-
-        // Create/update Member Group Manager role when label is entered.
-        if ( $group_manager_label ) {
-            update_option( 'bsync_member_group_manager_label', $group_manager_label );
-            
-            $group_manager_role = get_role( BSYNC_MEMBER_GROUP_MANAGER_ROLE );
-            if ( ! $group_manager_role ) {
-                // Create the role.
-                add_role(
-                    BSYNC_MEMBER_GROUP_MANAGER_ROLE,
-                    $group_manager_label,
-                    array(
-                        'read'                  => true,
-                        BSYNC_MEMBER_PORTAL_CAP => true,
-                        'list_users'            => true,
-                        'edit_users'            => true,
-                    )
-                );
-            } else {
-                // Update the role display name.
-                global $wp_roles;
-                $wp_roles->roles[ BSYNC_MEMBER_GROUP_MANAGER_ROLE ]['name'] = $group_manager_label;
-                update_option( $wp_roles->role_key, $wp_roles->roles );
-            }
-        }
-
-        // Create/update Member role when label is entered.
-        if ( $member_label ) {
-            update_option( 'bsync_member_label', $member_label );
-            
-            $member_role = get_role( BSYNC_MEMBER_ROLE );
-            if ( ! $member_role ) {
-                // Create the role.
-                add_role(
-                    BSYNC_MEMBER_ROLE,
-                    $member_label,
-                    array(
-                        'read'                  => true,
-                        BSYNC_MEMBER_PORTAL_CAP => true,
-                    )
-                );
-            } else {
-                // Update the role display name.
-                global $wp_roles;
-                $wp_roles->roles[ BSYNC_MEMBER_ROLE ]['name'] = $member_label;
-                update_option( $wp_roles->role_key, $wp_roles->roles );
-            }
-        }
-        if ( $page_label ) {
-            update_option( 'bsync_member_page_type_label', $page_label );
-        }
-        if ( $page_label_plural ) {
-            update_option( 'bsync_member_page_type_label_plural', $page_label_plural );
-        }
-        if ( $category_label ) {
-            update_option( 'bsync_member_category_type_label', $category_label );
-        }
-        if ( $category_label_plural ) {
-            update_option( 'bsync_member_category_type_label_plural', $category_label_plural );
-        }
-
         // Save visibility settings for Admin Managers
         $admin_manager_visibility = isset( $_POST['admin_manager_visibility'] ) ? sanitize_text_field( wp_unslash( $_POST['admin_manager_visibility'] ) ) : 'all';
         update_option( 'bsync_admin_manager_visibility', $admin_manager_visibility );
 
-        // Save group assignments
-        if ( isset( $_POST['member_group_assignments'] ) && is_array( $_POST['member_group_assignments'] ) ) {
-            foreach ( $_POST['member_group_assignments'] as $member_id => $group_manager_id ) {
-                $member_id = absint( $member_id );
-                $group_manager_id = absint( $group_manager_id );
-                
-                if ( $group_manager_id > 0 ) {
-                    update_user_meta( $member_id, 'bsync_assigned_group_manager', $group_manager_id );
-                } else {
-                    delete_user_meta( $member_id, 'bsync_assigned_group_manager' );
-                }
-            }
-        }
-
-        // Update role display names so they reflect the new labels in the UI.
-        global $wp_roles;
-        if ( isset( $wp_roles->roles[ BSYNC_MEMBER_MANAGER_ROLE ] ) && $manager_label ) {
-            $wp_roles->roles[ BSYNC_MEMBER_MANAGER_ROLE ]['name'] = $manager_label;
-            $wp_roles->role_names[ BSYNC_MEMBER_MANAGER_ROLE ]    = $manager_label;
-        }
-        if ( isset( $wp_roles->roles[ BSYNC_MEMBER_GROUP_MANAGER_ROLE ] ) && $group_manager_label ) {
-            $wp_roles->roles[ BSYNC_MEMBER_GROUP_MANAGER_ROLE ]['name'] = $group_manager_label;
-            $wp_roles->role_names[ BSYNC_MEMBER_GROUP_MANAGER_ROLE ]    = $group_manager_label;
-        }
-        if ( isset( $wp_roles->roles[ BSYNC_MEMBER_ROLE ] ) && $member_label ) {
-            $wp_roles->roles[ BSYNC_MEMBER_ROLE ]['name'] = $member_label;
-            $wp_roles->role_names[ BSYNC_MEMBER_ROLE ]    = $member_label;
-        }
-
         $notice = __( 'Settings saved.', 'bsync-member' );
     }
 
-    $manager_label         = get_option( 'bsync_member_manager_label', '' );
-    $group_manager_label   = get_option( 'bsync_member_group_manager_label', '' );
-    $member_label          = get_option( 'bsync_member_label', '' );
-    $page_label            = get_option( 'bsync_member_page_type_label', __( 'Member Page', 'bsync-member' ) );
-    $page_label_plural     = get_option( 'bsync_member_page_type_label_plural', __( 'Member Pages', 'bsync-member' ) );
-    $category_label        = get_option( 'bsync_member_category_type_label', __( 'Member Category', 'bsync-member' ) );
-    $category_label_plural = get_option( 'bsync_member_category_type_label_plural', __( 'Member Categories', 'bsync-member' ) );
     $admin_manager_visibility = get_option( 'bsync_admin_manager_visibility', 'all' );
 
     if ( $notice ) {
@@ -1216,36 +1080,38 @@ function bsync_member_render_settings_tab() {
     echo '<div class="card" style="max-width: 800px; margin-bottom: 20px;">';
     echo '<h2>' . esc_html__( 'Role Diagnostics', 'bsync-member' ) . '</h2>';
     
-    $manager_role = get_role( BSYNC_MEMBER_MANAGER_ROLE );
-    $member_role = get_role( BSYNC_MEMBER_ROLE );
+    $admin_manager_types = bsync_member_get_admin_manager_types();
+    $manager_groups = bsync_member_get_manager_groups();
+    $member_types = bsync_member_get_member_types();
     
-    echo '<p><strong>' . esc_html__( 'Member Manager Role:', 'bsync-member' ) . '</strong> ';
-    if ( $manager_role ) {
-        echo '<span style="color: green;">✓ ' . esc_html__( 'Exists', 'bsync-member' ) . '</span>';
-        $key_caps = array( BSYNC_MEMBER_MANAGE_CAP, 'edit_users', 'list_users', 'edit_bsync_member_pages', 'manage_bsynce_crm' );
-        $missing_caps = array();
-        foreach ( $key_caps as $cap ) {
-            if ( ! $manager_role->has_cap( $cap ) ) {
-                $missing_caps[] = $cap;
-            }
-        }
-        if ( ! empty( $missing_caps ) ) {
-            echo '<br><span style="color: red;">⚠ ' . esc_html__( 'Missing capabilities:', 'bsync-member' ) . ' ' . esc_html( implode( ', ', $missing_caps ) ) . '</span>';
-        } else {
-            echo '<br><span style="color: green;">✓ ' . esc_html__( 'All key capabilities present', 'bsync-member' ) . '</span>';
-        }
+    echo '<p><strong>' . esc_html__( 'Admin Manager Types:', 'bsync-member' ) . '</strong> ';
+    if ( ! empty( $admin_manager_types ) ) {
+        echo '<span style="color: green;">✓ ' . count( $admin_manager_types ) . ' ' . esc_html__( 'role(s) configured', 'bsync-member' ) . '</span>';
     } else {
-        echo '<span style="color: red;">✗ ' . esc_html__( 'Missing', 'bsync-member' ) . '</span>';
+        echo '<span style="color: orange;">⚠ ' . esc_html__( 'No admin manager types configured', 'bsync-member' ) . '</span>';
     }
     echo '</p>';
     
-    echo '<p><strong>' . esc_html__( 'Member Role:', 'bsync-member' ) . '</strong> ';
-    if ( $member_role ) {
-        echo '<span style="color: green;">✓ ' . esc_html__( 'Exists', 'bsync-member' ) . '</span>';
+    echo '<p><strong>' . esc_html__( 'Member Manager Roles:', 'bsync-member' ) . '</strong> ';
+    if ( ! empty( $manager_groups ) ) {
+        echo '<span style="color: green;">✓ ' . count( $manager_groups ) . ' ' . esc_html__( 'role(s) configured', 'bsync-member' ) . '</span>';
     } else {
-        echo '<span style="color: red;">✗ ' . esc_html__( 'Missing', 'bsync-member' ) . '</span>';
+        echo '<span style="color: orange;">⚠ ' . esc_html__( 'No member manager roles configured', 'bsync-member' ) . '</span>';
     }
     echo '</p>';
+    
+    echo '<p><strong>' . esc_html__( 'Member Roles:', 'bsync-member' ) . '</strong> ';
+    if ( ! empty( $member_types ) ) {
+        echo '<span style="color: green;">✓ ' . count( $member_types ) . ' ' . esc_html__( 'role(s) configured', 'bsync-member' ) . '</span>';
+    } else {
+        echo '<span style="color: orange;">⚠ ' . esc_html__( 'No member roles configured', 'bsync-member' ) . '</span>';
+    }
+    echo '</p>';
+    
+    echo '<p class="description">' . sprintf(
+        esc_html__( 'To create and manage roles, go to %s.', 'bsync-member' ),
+        '<a href="' . esc_url( admin_url( 'admin.php?page=bsync_member_roles' ) ) . '">' . esc_html__( 'Member Roles & Manager Groups', 'bsync-member' ) . '</a>'
+    ) . '</p>';
     
     echo '<form method="post" style="margin-top: 15px;">';
     wp_nonce_field( 'bsync_member_sync_roles', 'bsync_member_sync_roles_nonce' );
@@ -1259,21 +1125,6 @@ function bsync_member_render_settings_tab() {
 
     echo '<table class="form-table" role="presentation">';
 
-    echo '<tr><th scope="row"><label for="bsync_member_manager_label">' . esc_html__( 'Member Admin Manager role label', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_manager_label" id="bsync_member_manager_label" value="%s" placeholder="%s" />', esc_attr( $manager_label ), esc_attr__( 'Member Admin Manager', 'bsync-member' ) );
-    echo '<p class="description">' . esc_html__( 'Enter a name to create the Member Admin Manager role. Leave empty to not use this role.', 'bsync-member' ) . '</p>';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_group_manager_label">' . esc_html__( 'Member Group Manager role label', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_group_manager_label" id="bsync_member_group_manager_label" value="%s" placeholder="%s" />', esc_attr( $group_manager_label ), esc_attr__( 'Member Group Manager', 'bsync-member' ) );
-    echo '<p class="description">' . esc_html__( 'Enter a name to create the Member Group Manager role. Leave empty to not use this role.', 'bsync-member' ) . '</p>';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_label">' . esc_html__( 'Member role label', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_label" id="bsync_member_label" value="%s" placeholder="%s" />', esc_attr( $member_label ), esc_attr__( 'Member', 'bsync-member' ) );
-    echo '<p class="description">' . esc_html__( 'Enter a name to create the Member role. Leave empty to not use this role.', 'bsync-member' ) . '</p>';
-    echo '</td></tr>';
-
     echo '<tr><th scope="row">' . esc_html__( 'Admin Manager Visibility', 'bsync-member' ) . '</th><td>';
     echo '<fieldset>';
     echo '<label><input type="radio" name="admin_manager_visibility" value="all" ' . checked( $admin_manager_visibility, 'all', false ) . '> ' . esc_html__( 'View all members', 'bsync-member' ) . '</label><br>';
@@ -1283,79 +1134,7 @@ function bsync_member_render_settings_tab() {
     echo '<p class="description">' . esc_html__( 'Controls which members Admin Managers can see in the Members list.', 'bsync-member' ) . '</p>';
     echo '</td></tr>';
 
-    echo '<tr><th scope="row"><label for="bsync_member_page_type_label">' . esc_html__( 'Member page type (singular)', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_page_type_label" id="bsync_member_page_type_label" value="%s" />', esc_attr( $page_label ) );
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_page_type_label_plural">' . esc_html__( 'Member page type (plural)', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_page_type_label_plural" id="bsync_member_page_type_label_plural" value="%s" />', esc_attr( $page_label_plural ) );
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_category_type_label">' . esc_html__( 'Member category type (singular)', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_category_type_label" id="bsync_member_category_type_label" value="%s" />', esc_attr( $category_label ) );
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="bsync_member_category_type_label_plural">' . esc_html__( 'Member category type (plural)', 'bsync-member' ) . '</label></th><td>';
-    printf( '<input type="text" class="regular-text" name="bsync_member_category_type_label_plural" id="bsync_member_category_type_label_plural" value="%s" />', esc_attr( $category_label_plural ) );
-    echo '</td></tr>';
-
     echo '</table>';
-
-    // Group Assignment Section
-    echo '<h2 style="margin-top: 30px;">' . esc_html__( 'Member Group Assignments', 'bsync-member' ) . '</h2>';
-    echo '<p class="description">' . esc_html__( 'Assign members to specific Group Managers. Group Managers will see member profiles in their admin area.', 'bsync-member' ) . '</p>';
-    
-    // Get all Group Managers
-    $group_managers = get_users( array(
-        'role' => BSYNC_MEMBER_GROUP_MANAGER_ROLE,
-        'orderby' => 'display_name',
-        'order' => 'ASC'
-    ) );
-    
-    // Get all members
-    $members = get_users( array(
-        'role__in' => array( BSYNC_MEMBER_ROLE ),
-        'orderby' => 'display_name',
-        'order' => 'ASC'
-    ) );
-    
-    // Also get member type roles
-    $member_types = bsync_member_get_member_types();
-    if ( ! empty( $member_types ) ) {
-        $type_roles = array_keys( $member_types );
-        $type_members = get_users( array(
-            'role__in' => $type_roles,
-            'orderby' => 'display_name',
-            'order' => 'ASC'
-        ) );
-        $members = array_merge( $members, $type_members );
-    }
-    
-    if ( ! empty( $members ) && ! empty( $group_managers ) ) {
-        echo '<table class="wp-list-table widefat fixed striped" style="margin-top: 15px;">';
-        echo '<thead><tr><th>' . esc_html__( 'Member', 'bsync-member' ) . '</th><th>' . esc_html__( 'Assigned Group Manager', 'bsync-member' ) . '</th></tr></thead>';
-        echo '<tbody>';
-        
-        foreach ( $members as $member ) {
-            $assigned_manager = get_user_meta( $member->ID, 'bsync_assigned_group_manager', true );
-            echo '<tr>';
-            echo '<td>' . esc_html( $member->display_name ) . ' (' . esc_html( $member->user_email ) . ')</td>';
-            echo '<td>';
-            echo '<select name="member_group_assignments[' . esc_attr( $member->ID ) . ']">';
-            echo '<option value="0">' . esc_html__( '-- None --', 'bsync-member' ) . '</option>';
-            foreach ( $group_managers as $gm ) {
-                $selected = selected( $assigned_manager, $gm->ID, false );
-                echo '<option value="' . esc_attr( $gm->ID ) . '" ' . $selected . '>' . esc_html( $gm->display_name ) . '</option>';
-            }
-            echo '</select>';
-            echo '</td>';
-            echo '</tr>';
-        }
-        
-        echo '</tbody></table>';
-    } else {
-        echo '<p><em>' . esc_html__( 'No members or group managers found.', 'bsync-member' ) . '</em></p>';
-    }
 
     submit_button( __( 'Save Changes', 'bsync-member' ) );
     echo '</form>';
@@ -1365,6 +1144,46 @@ function bsync_member_render_settings_tab() {
  * Member Manager UI: list, add, deactivate, delete, reset password.
  */
 function bsync_member_render_members_page() {
+    if ( ! current_user_can( BSYNC_MEMBER_MANAGE_CAP ) ) {
+        wp_die( __( 'You do not have permission to access this page.', 'bsync-member' ) );
+    }
+
+    // Get current tab from query string.
+    $current_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'member_list';
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Bsync Members', 'bsync-member' ) . '</h1>';
+
+    // Horizontal tabs navigation.
+    echo '<h2 class="nav-tab-wrapper">';
+    $tabs = array(
+        'member_list'       => __( 'Member List', 'bsync-member' ),
+        'group_assignments' => __( 'Group Assignments', 'bsync-member' ),
+    );
+    foreach ( $tabs as $tab_key => $tab_label ) {
+        $active_class = ( $current_tab === $tab_key ) ? ' nav-tab-active' : '';
+        $tab_url = add_query_arg( array(
+            'page' => 'bsync_members',
+            'tab'  => $tab_key,
+        ), admin_url( 'admin.php' ) );
+        echo '<a href="' . esc_url( $tab_url ) . '" class="nav-tab' . esc_attr( $active_class ) . '">' . esc_html( $tab_label ) . '</a>';
+    }
+    echo '</h2>';
+
+    // Render the active tab content.
+    if ( 'group_assignments' === $current_tab ) {
+        bsync_member_render_group_assignments_tab();
+    } else {
+        bsync_member_render_member_list_tab();
+    }
+
+    echo '</div>';
+}
+
+/**
+ * Member List tab: list, add, deactivate, delete, reset password.
+ */
+function bsync_member_render_member_list_tab() {
     if ( ! current_user_can( BSYNC_MEMBER_MANAGE_CAP ) ) {
         wp_die( __( 'You do not have permission to access this page.', 'bsync-member' ) );
     }
@@ -1415,19 +1234,21 @@ function bsync_member_render_members_page() {
     $allowed_member_types = bsync_member_get_allowed_member_types_for_current_user();
 
     // Fetch members that are managed by this plugin.
-    // Query for users who have any member type role (including the base member role).
+    // Query for users who have any member type role.
     // We need to find both active users (with roles) and deactivated users (who may only have the meta).
     $all_member_types = bsync_member_get_member_types();
     $query_roles = array_keys( $all_member_types );
-    $query_roles[] = BSYNC_MEMBER_ROLE;
 
-    $query_args = array(
-        'number'   => 200,
-        'role__in' => $query_roles,
-    );
+    $members_from_roles = array();
+    if ( ! empty( $query_roles ) ) {
+        $query_args = array(
+            'number'   => 200,
+            'role__in' => $query_roles,
+        );
 
-    $user_query = new WP_User_Query( $query_args );
-    $members_from_roles = $user_query->get_results();
+        $user_query = new WP_User_Query( $query_args );
+        $members_from_roles = $user_query->get_results();
+    }
 
     // Also query for users with bsync_member_active meta (catches deactivated users).
     $meta_query_args = array(
@@ -1502,26 +1323,12 @@ function bsync_member_render_members_page() {
         // If 'all', no additional filtering needed.
     }
 
-    echo '<div class="wrap">';
-    echo '<h1>' . esc_html__( 'Bsync Members', 'bsync-member' ) . '</h1>';
-
     if ( $notice ) {
         echo '<div class="notice notice-success"><p>' . esc_html( $notice ) . '</p></div>';
     }
     if ( $error ) {
         echo '<div class="notice notice-error"><p>' . esc_html( $error ) . '</p></div>';
     }
-
-    // Show the configured role labels so managers can see how their role is named.
-    $manager_label = get_option( 'bsync_member_manager_label', __( 'Member Manager', 'bsync-member' ) );
-    $member_label  = get_option( 'bsync_member_label', __( 'Member', 'bsync-member' ) );
-
-    echo '<p><em>' . sprintf(
-        /* translators: 1: Member Manager role label, 2: Member role label */
-        esc_html__( 'Role labels: %1$s (manager) and %2$s (member).', 'bsync-member' ),
-        esc_html( $manager_label ),
-        esc_html( $member_label )
-    ) . '</em></p>';
 
     $add_user_url = admin_url( 'user-new.php' );
     echo '<p><a href="' . esc_url( $add_user_url ) . '" class="button button-primary">' . esc_html__( 'Add Member', 'bsync-member' ) . '</a></p>';
@@ -1534,6 +1341,7 @@ function bsync_member_render_members_page() {
         $current_filter = isset( $_GET['bsync_member_member_type'] ) ? sanitize_key( wp_unslash( $_GET['bsync_member_member_type'] ) ) : '';
         echo '<form method="get" style="margin-bottom:10px;">';
         echo '<input type="hidden" name="page" value="bsync_members" />';
+        echo '<input type="hidden" name="tab" value="member_list" />';
         echo '<label for="bsync_member_member_type_filter">' . esc_html__( 'Filter by member type:', 'bsync-member' ) . '</label> ';
         echo '<select name="bsync_member_member_type" id="bsync_member_member_type_filter">';
         echo '<option value="">' . esc_html__( 'All member types', 'bsync-member' ) . '</option>';
@@ -1583,6 +1391,7 @@ function bsync_member_render_members_page() {
             $base_url = add_query_arg(
                 array(
                     'page' => 'bsync_members',
+                    'tab'  => 'member_list',
                 ),
                 admin_url( 'admin.php' )
             );
@@ -1651,8 +1460,153 @@ function bsync_member_render_members_page() {
     } else {
         echo '<p>' . esc_html__( 'No members found yet.', 'bsync-member' ) . '</p>';
     }
+}
 
-    echo '</div>';
+/**
+ * Group Assignments tab: Assign members to Group Managers.
+ */
+function bsync_member_render_group_assignments_tab() {
+    $notice = '';
+
+    // Handle form submission for group assignments.
+    if ( ! empty( $_POST['bsync_member_group_assignments_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_group_assignments_nonce'], 'bsync_member_save_group_assignments' ) ) {
+        // Save group assignments.
+        if ( isset( $_POST['member_group_assignments'] ) && is_array( $_POST['member_group_assignments'] ) ) {
+            foreach ( $_POST['member_group_assignments'] as $member_id => $group_manager_id ) {
+                $member_id = absint( $member_id );
+                $group_manager_id = absint( $group_manager_id );
+                
+                if ( $group_manager_id > 0 ) {
+                    update_user_meta( $member_id, 'bsync_assigned_group_manager', $group_manager_id );
+                } else {
+                    delete_user_meta( $member_id, 'bsync_assigned_group_manager' );
+                }
+            }
+        }
+        $notice = __( 'Group assignments saved.', 'bsync-member' );
+    }
+
+    if ( $notice ) {
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $notice ) . '</p></div>';
+    }
+
+    echo '<form method="post">';
+    wp_nonce_field( 'bsync_member_save_group_assignments', 'bsync_member_group_assignments_nonce' );
+
+    echo '<h2>' . esc_html__( 'Member Group Assignments', 'bsync-member' ) . '</h2>';
+    echo '<p class="description">' . esc_html__( 'Assign members to specific Group Managers. Group Managers will see member profiles in their admin area.', 'bsync-member' ) . '</p>';
+    
+    // Get all Group Managers from all manager group roles
+    $manager_groups = bsync_member_get_manager_groups();
+    $manager_roles = array_keys( $manager_groups );
+    
+    $group_managers = array();
+    if ( ! empty( $manager_roles ) ) {
+        $group_managers = get_users( array(
+            'role__in' => $manager_roles,
+            'orderby' => 'display_name',
+            'order' => 'ASC'
+        ) );
+    }
+    
+    // Get all members - use same comprehensive approach as member list tab
+    $all_member_types = bsync_member_get_member_types();
+    $query_roles = array_keys( $all_member_types );
+
+    $members_from_roles = array();
+    if ( ! empty( $query_roles ) ) {
+        $query_args = array(
+            'number'   => 500,
+            'role__in' => $query_roles,
+            'orderby'  => 'display_name',
+            'order'    => 'ASC'
+        );
+
+        $user_query = new WP_User_Query( $query_args );
+        $members_from_roles = $user_query->get_results();
+    }
+
+    // Also query for users with bsync_member_active meta (catches deactivated users).
+    $meta_query_args = array(
+        'number'     => 500,
+        'orderby'    => 'display_name',
+        'order'      => 'ASC',
+        'meta_query' => array(
+            array(
+                'key'     => 'bsync_member_active',
+                'compare' => 'EXISTS',
+            ),
+        ),
+    );
+    $meta_user_query = new WP_User_Query( $meta_query_args );
+    $members_from_meta = $meta_user_query->get_results();
+
+    // Merge and deduplicate the two result sets.
+    $all_members = array();
+    foreach ( $members_from_roles as $member ) {
+        $all_members[ $member->ID ] = $member;
+    }
+    foreach ( $members_from_meta as $member ) {
+        $all_members[ $member->ID ] = $member;
+    }
+    $members = array_values( $all_members );
+    
+    if ( ! empty( $members ) && ! empty( $group_managers ) ) {
+        echo '<table class="wp-list-table widefat fixed striped" style="margin-top: 15px;">';
+        echo '<thead><tr><th>' . esc_html__( 'Member', 'bsync-member' ) . '</th><th>' . esc_html__( 'Assigned Group Manager', 'bsync-member' ) . '</th></tr></thead>';
+        echo '<tbody>';
+        
+        foreach ( $members as $member ) {
+            $assigned_manager = get_user_meta( $member->ID, 'bsync_assigned_group_manager', true );
+            echo '<tr>';
+            echo '<td>' . esc_html( $member->display_name ) . ' (' . esc_html( $member->user_email ) . ')</td>';
+            echo '<td>';
+            echo '<select name="member_group_assignments[' . esc_attr( $member->ID ) . ']">';
+            echo '<option value="0">' . esc_html__( '-- None --', 'bsync-member' ) . '</option>';
+            foreach ( $group_managers as $gm ) {
+                $selected = selected( $assigned_manager, $gm->ID, false );
+                echo '<option value="' . esc_attr( $gm->ID ) . '" ' . $selected . '>' . esc_html( $gm->display_name ) . '</option>';
+            }
+            echo '</select>';
+            echo '</td>';
+            echo '</tr>';
+        }
+        
+        echo '</tbody></table>';
+    } else {
+        // Show helpful messages based on what's missing
+        echo '<div class="notice notice-warning inline" style="margin-top: 15px;"><p>';
+        
+        if ( empty( $group_managers ) && empty( $members ) ) {
+            echo '<strong>' . esc_html__( 'No members or group managers found.', 'bsync-member' ) . '</strong><br>';
+            echo esc_html__( 'To use this feature:', 'bsync-member' ) . '<br>';
+            echo '1. ' . sprintf(
+                esc_html__( 'Ensure Member Group Manager role and Member roles exist in %s.', 'bsync-member' ),
+                '<a href="' . esc_url( admin_url( 'admin.php?page=bsync_member_settings&tab=settings' ) ) . '">' . esc_html__( 'Member Settings → Settings', 'bsync-member' ) . '</a>'
+            ) . '<br>';
+            echo '2. ' . sprintf(
+                esc_html__( 'Go to %s and assign these roles to users.', 'bsync-member' ),
+                '<a href="' . esc_url( admin_url( 'users.php' ) ) . '">' . esc_html__( 'Users', 'bsync-member' ) . '</a>'
+            );
+        } elseif ( empty( $group_managers ) ) {
+            echo '<strong>' . esc_html__( 'No group managers found.', 'bsync-member' ) . '</strong><br>';
+            echo sprintf(
+                esc_html__( 'You need to assign the "Member Group Manager" role to at least one user. Go to %s, edit a user, and select "Member Group Manager" from the Role dropdown.', 'bsync-member' ),
+                '<a href="' . esc_url( admin_url( 'users.php' ) ) . '">' . esc_html__( 'Users', 'bsync-member' ) . '</a>'
+            );
+        } elseif ( empty( $members ) ) {
+            echo '<strong>' . esc_html__( 'No members found.', 'bsync-member' ) . '</strong><br>';
+            echo sprintf(
+                esc_html__( 'You need to assign member roles to users. Go to %s, edit users, and select a member role from the Role dropdown.', 'bsync-member' ),
+                '<a href="' . esc_url( admin_url( 'users.php' ) ) . '">' . esc_html__( 'Users', 'bsync-member' ) . '</a>'
+            );
+        }
+        
+        echo '</p></div>';
+    }
+
+    submit_button( __( 'Save Assignments', 'bsync-member' ) );
+    echo '</form>';
 }
 
 /**
@@ -3301,6 +3255,22 @@ function bsync_member_render_roles_page_content() {
     $admin_manager_types   = bsync_member_get_admin_manager_types();
     $mapping               = bsync_member_get_manager_member_map();
 
+    // Ensure all manager groups have corresponding WordPress roles (migration fix).
+    foreach ( $manager_groups as $slug => $label ) {
+        if ( ! get_role( $slug ) ) {
+            add_role(
+                $slug,
+                $label,
+                array(
+                    'read'                  => true,
+                    BSYNC_MEMBER_PORTAL_CAP => true,
+                    'list_users'            => true,
+                    'edit_users'            => true,
+                )
+            );
+        }
+    }
+
     if ( ! empty( $_POST['bsync_member_roles_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_roles_nonce'], 'bsync_member_save_roles' ) ) {
         // Handle deletion of admin manager types.
         if ( ! empty( $_POST['bsync_delete_admin_manager_types'] ) && is_array( $_POST['bsync_delete_admin_manager_types'] ) ) {
@@ -3442,6 +3412,13 @@ function bsync_member_render_roles_page_content() {
                         $label = $old_label;
                     }
                     $new_labels[ $slug ] = $label;
+
+                    // Update the WordPress role display name.
+                    global $wp_roles;
+                    if ( isset( $wp_roles->roles[ $slug ] ) ) {
+                        $wp_roles->roles[ $slug ]['name'] = $label;
+                        update_option( $wp_roles->role_key, $wp_roles->roles );
+                    }
                 } else {
                     $new_labels[ $slug ] = $old_label;
                 }
@@ -3545,7 +3522,20 @@ function bsync_member_render_roles_page_content() {
                         $lines[] = $s . '|' . $l;
                     }
                     update_option( 'bsync_member_manager_groups_def', implode( "\n", $lines ) );
-                    $notice = __( 'Member manager group added.', 'bsync-member' );
+
+                    // Create the WordPress role immediately with Member Group Manager capabilities.
+                    add_role(
+                        $slug,
+                        $label,
+                        array(
+                            'read'                  => true,
+                            BSYNC_MEMBER_PORTAL_CAP => true,
+                            'list_users'            => true,
+                            'edit_users'            => true,
+                        )
+                    );
+
+                    $notice = __( 'Member manager role added and WordPress role created.', 'bsync-member' );
                 } else {
                     $notice = __( 'That manager group already exists.', 'bsync-member' );
                 }
@@ -3780,6 +3770,25 @@ function bsync_member_render_page_types_page() {
     $page_map     = bsync_member_get_page_type_map();
 
     if ( ! empty( $_POST['bsync_member_page_types_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_page_types_nonce'], 'bsync_member_save_page_types' ) ) {
+        // Save page and category labels
+        $page_label            = isset( $_POST['bsync_member_page_type_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_page_type_label'] ) ) : '';
+        $page_label_plural     = isset( $_POST['bsync_member_page_type_label_plural'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_page_type_label_plural'] ) ) : '';
+        $category_label        = isset( $_POST['bsync_member_category_type_label'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_category_type_label'] ) ) : '';
+        $category_label_plural = isset( $_POST['bsync_member_category_type_label_plural'] ) ? sanitize_text_field( wp_unslash( $_POST['bsync_member_category_type_label_plural'] ) ) : '';
+
+        if ( $page_label ) {
+            update_option( 'bsync_member_page_type_label', $page_label );
+        }
+        if ( $page_label_plural ) {
+            update_option( 'bsync_member_page_type_label_plural', $page_label_plural );
+        }
+        if ( $category_label ) {
+            update_option( 'bsync_member_category_type_label', $category_label );
+        }
+        if ( $category_label_plural ) {
+            update_option( 'bsync_member_category_type_label_plural', $category_label_plural );
+        }
+
         // First, update labels for existing page types.
         if ( isset( $_POST['bsync_member_page_type_labels'] ) && is_array( $_POST['bsync_member_page_type_labels'] ) ) {
             $submitted_labels = wp_unslash( $_POST['bsync_member_page_type_labels'] );
@@ -3870,6 +3879,37 @@ function bsync_member_render_page_types_page() {
 
     echo '<form method="post">';
     wp_nonce_field( 'bsync_member_save_page_types', 'bsync_member_page_types_nonce' );
+
+    // Page and Category Labels Section
+    echo '<h2>' . esc_html__( 'Page and Category Labels', 'bsync-member' ) . '</h2>';
+    echo '<p>' . esc_html__( 'These labels control how pages and categories appear in the WordPress admin menu and throughout the plugin.', 'bsync-member' ) . '</p>';
+    
+    $page_label            = get_option( 'bsync_member_page_type_label', __( 'Member Page', 'bsync-member' ) );
+    $page_label_plural     = get_option( 'bsync_member_page_type_label_plural', __( 'Member Pages', 'bsync-member' ) );
+    $category_label        = get_option( 'bsync_member_category_type_label', __( 'Member Category', 'bsync-member' ) );
+    $category_label_plural = get_option( 'bsync_member_category_type_label_plural', __( 'Member Categories', 'bsync-member' ) );
+    
+    echo '<table class="form-table" role="presentation">';
+    
+    echo '<tr><th scope="row"><label for="bsync_member_page_type_label">' . esc_html__( 'Member page type (singular)', 'bsync-member' ) . '</label></th><td>';
+    printf( '<input type="text" class="regular-text" name="bsync_member_page_type_label" id="bsync_member_page_type_label" value="%s" />', esc_attr( $page_label ) );
+    echo '</td></tr>';
+
+    echo '<tr><th scope="row"><label for="bsync_member_page_type_label_plural">' . esc_html__( 'Member page type (plural)', 'bsync-member' ) . '</label></th><td>';
+    printf( '<input type="text" class="regular-text" name="bsync_member_page_type_label_plural" id="bsync_member_page_type_label_plural" value="%s" />', esc_attr( $page_label_plural ) );
+    echo '</td></tr>';
+
+    echo '<tr><th scope="row"><label for="bsync_member_category_type_label">' . esc_html__( 'Member category type (singular)', 'bsync-member' ) . '</label></th><td>';
+    printf( '<input type="text" class="regular-text" name="bsync_member_category_type_label" id="bsync_member_category_type_label" value="%s" />', esc_attr( $category_label ) );
+    echo '</td></tr>';
+
+    echo '<tr><th scope="row"><label for="bsync_member_category_type_label_plural">' . esc_html__( 'Member category type (plural)', 'bsync-member' ) . '</label></th><td>';
+    printf( '<input type="text" class="regular-text" name="bsync_member_category_type_label_plural" id="bsync_member_category_type_label_plural" value="%s" />', esc_attr( $category_label_plural ) );
+    echo '</td></tr>';
+    
+    echo '</table>';
+    
+    echo '<hr style="margin: 30px 0;" />';
 
     echo '<h2>' . esc_html__( 'Create Page Types', 'bsync-member' ) . '</h2>';
     echo '<p>' . esc_html__( 'These are logical groups of pages (for example “Camp Info Pages”, “Leader Resources”). They do not create new WordPress post types, but you can use them to plan which roles should see which kinds of content.', 'bsync-member' ) . '</p>';
