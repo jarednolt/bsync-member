@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.4.1
+ * Version: 1.5.0
  * Author: bsync.me
  * Text Domain: bsync-member
  */
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Basic plugin constants.
-define( 'BSYNC_MEMBER_VERSION', '1.4.0' );
+define( 'BSYNC_MEMBER_VERSION', '1.5.0' );
 define( 'BSYNC_MEMBER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'BSYNC_MEMBER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -96,6 +96,9 @@ function bsync_member_activate() {
         $member_role->add_cap( BSYNC_MEMBER_PORTAL_CAP );
     }
 
+    // Create registrations table for approval workflow.
+    bsync_member_create_registrations_table();
+
     // Ensure site administrators can always manage members and pages.
     $admin_role = get_role( 'administrator' );
     if ( $admin_role ) {
@@ -127,8 +130,45 @@ function bsync_member_activate() {
     // Ensure rewrite rules know about the member page URLs.
     bsync_member_register_cpt_and_tax();
     flush_rewrite_rules();
+
+    // Create registrations table for approval workflow.
+    bsync_member_create_registrations_table();
 }
 register_activation_hook( __FILE__, 'bsync_member_activate' );
+
+/**
+ * Create the registrations table for storing pending member applications.
+ */
+function bsync_member_create_registrations_table() {
+    global $wpdb;
+    $table_name      = $wpdb->prefix . 'bsync_member_registrations';
+    $charset_collate = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE IF NOT EXISTS {$table_name} (
+        id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        form_id bigint(20) UNSIGNED NOT NULL,
+        submission_id bigint(20) UNSIGNED DEFAULT NULL,
+        first_name varchar(255) DEFAULT NULL,
+        last_name varchar(255) DEFAULT NULL,
+        email varchar(255) NOT NULL,
+        phone varchar(50) DEFAULT NULL,
+        member_type varchar(255) DEFAULT NULL,
+        form_data longtext DEFAULT NULL,
+        status varchar(20) DEFAULT 'pending',
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        processed_at datetime DEFAULT NULL,
+        processed_by bigint(20) UNSIGNED DEFAULT NULL,
+        user_id bigint(20) UNSIGNED DEFAULT NULL,
+        notes text DEFAULT NULL,
+        PRIMARY KEY  (id),
+        KEY status (status),
+        KEY email (email),
+        KEY submission_id (submission_id)
+    ) {$charset_collate};";
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta( $sql );
+}
 
 /**
  * Deactivation hook: Clean up custom roles created by the plugin.
@@ -713,6 +753,16 @@ function bsync_member_register_admin_menu() {
         'bsync_member_render_members_page'
     );
 
+    // Pending Registrations submenu
+    add_submenu_page(
+        'bsync_members',
+        __( 'Pending Registrations', 'bsync-member' ),
+        __( 'Pending Registrations', 'bsync-member' ),
+        BSYNC_MEMBER_MANAGE_CAP,
+        'bsync_member_registrations',
+        'bsync_member_render_registrations_page'
+    );
+
     add_submenu_page(
         'bsync_members',
         __( 'Member Settings', 'bsync-member' ),
@@ -912,6 +962,41 @@ function bsync_member_render_member_roles_and_groups_tab() {
  * Registration Form tab content: Setup instructions for Fluent Forms member registration.
  */
 function bsync_member_render_registration_form_tab() {
+    $notice = '';
+
+    // Handle form submission for approval settings
+    if ( ! empty( $_POST['bsync_member_registration_settings_nonce'] ) && wp_verify_nonce( $_POST['bsync_member_registration_settings_nonce'], 'bsync_member_save_registration_settings' ) ) {
+        // Auto-approval setting
+        $auto_approve = isset( $_POST['auto_approve_registrations'] ) ? 1 : 0;
+        update_option( 'bsync_member_auto_approve_registrations', $auto_approve );
+
+        // Notification settings
+        $notify_admin = isset( $_POST['notify_admin_new_registration'] ) ? 1 : 0;
+        update_option( 'bsync_member_notify_admin_new_registration', $notify_admin );
+
+        $notify_user_approved = isset( $_POST['notify_user_approved'] ) ? 1 : 0;
+        update_option( 'bsync_member_notify_user_approved', $notify_user_approved );
+
+        $notify_user_rejected = isset( $_POST['notify_user_rejected'] ) ? 1 : 0;
+        update_option( 'bsync_member_notify_user_rejected', $notify_user_rejected );
+
+        $admin_email = isset( $_POST['admin_notification_email'] ) ? sanitize_email( wp_unslash( $_POST['admin_notification_email'] ) ) : get_option( 'admin_email' );
+        update_option( 'bsync_member_admin_notification_email', $admin_email );
+
+        $notice = __( 'Registration settings saved.', 'bsync-member' );
+    }
+
+    // Get current settings
+    $auto_approve = get_option( 'bsync_member_auto_approve_registrations', 0 );
+    $notify_admin = get_option( 'bsync_member_notify_admin_new_registration', 1 );
+    $notify_user_approved = get_option( 'bsync_member_notify_user_approved', 1 );
+    $notify_user_rejected = get_option( 'bsync_member_notify_user_rejected', 0 );
+    $admin_email = get_option( 'bsync_member_admin_notification_email', get_option( 'admin_email' ) );
+
+    if ( $notice ) {
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $notice ) . '</p></div>';
+    }
+
     // Get all member types for the example
     $member_types = bsync_member_get_member_types();
 
@@ -952,6 +1037,12 @@ function bsync_member_render_registration_form_tab() {
             'name'    => 'email',
             'label'   => 'Email Address',
             'notes'   => 'Required. Will be used for login username.',
+        ),
+        array(
+            'type'    => 'Phone',
+            'name'    => 'phone',
+            'label'   => 'Phone Number',
+            'notes'   => 'Optional. Stored with member profile.',
         ),
         array(
             'type'    => 'Password',
@@ -1007,31 +1098,64 @@ function bsync_member_render_registration_form_tab() {
         echo '</div>';
     }
 
-    // Optional fields
-    echo '<div class="card" style="max-width: 900px; margin-top: 20px;">';
-    echo '<h3>' . esc_html__( 'Optional Form Fields', 'bsync-member' ) . '</h3>';
-    echo '<p>' . esc_html__( 'You can add any additional fields you want. Common optional fields:', 'bsync-member' ) . '</p>';
-    echo '<ul style="margin-left: 20px;">';
-    echo '<li>' . esc_html__( 'Phone Number', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Address', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Date of Birth', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Emergency Contact Information', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Terms & Conditions Acceptance', 'bsync-member' ) . '</li>';
-    echo '</ul>';
-    echo '<p class="description">' . esc_html__( 'These will be stored with the form submission and can be viewed by administrators.', 'bsync-member' ) . '</p>';
+    // Additional fields note
+    echo '<div class="notice notice-info" style="margin-top: 20px;">';
+    echo '<p><strong>' . esc_html__( 'Additional Fields:', 'bsync-member' ) . '</strong> ' . esc_html__( 'You can add any other fields you want to your form (address, date of birth, emergency contact, etc.). All submitted data will be stored with the registration and viewable in the admin area.', 'bsync-member' ) . '</p>';
     echo '</div>';
 
-    // Approval settings section
+    // Approval settings section with form
+    echo '<form method="post">';
+    wp_nonce_field( 'bsync_member_save_registration_settings', 'bsync_member_registration_settings_nonce' );
+
     echo '<div class="card" style="max-width: 900px; margin-top: 20px;">';
     echo '<h3>' . esc_html__( 'Approval Settings', 'bsync-member' ) . '</h3>';
-    echo '<p>' . esc_html__( 'Configuration for the registration approval workflow will be added here in the next update. This will include:', 'bsync-member' ) . '</p>';
-    echo '<ul style="margin-left: 20px;">';
-    echo '<li>' . esc_html__( 'Toggle between automatic and manual approval', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Admin page to review and approve pending registrations', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Email notifications for new registrations', 'bsync-member' ) . '</li>';
-    echo '<li>' . esc_html__( 'Email confirmations when accounts are approved', 'bsync-member' ) . '</li>';
-    echo '</ul>';
+    echo '<p>' . esc_html__( 'Configure how new member registrations are handled.', 'bsync-member' ) . '</p>';
+
+    echo '<table class="form-table" role="presentation" style="margin-top: 15px;">';
+
+    // Auto-approval toggle
+    echo '<tr><th scope="row">' . esc_html__( 'Auto-Approve Registrations', 'bsync-member' ) . '</th><td>';
+    echo '<label><input type="checkbox" name="auto_approve_registrations" value="1" ' . checked( $auto_approve, 1, false ) . '> ';
+    echo esc_html__( 'Automatically create member accounts when forms are submitted', 'bsync-member' ) . '</label>';
+    echo '<p class="description">' . esc_html__( 'When disabled, registrations will go to "Pending Registrations" for manual approval.', 'bsync-member' ) . '</p>';
+    echo '</td></tr>';
+
+    echo '</table>';
+
+    echo '<h4 style="margin-top: 20px;">' . esc_html__( 'Email Notifications', 'bsync-member' ) . '</h4>';
+    echo '<table class="form-table" role="presentation">';
+
+    // Admin notification email
+    echo '<tr><th scope="row">' . esc_html__( 'Admin Email Address', 'bsync-member' ) . '</th><td>';
+    echo '<input type="email" name="admin_notification_email" value="' . esc_attr( $admin_email ) . '" class="regular-text" />';
+    echo '<p class="description">' . esc_html__( 'Email address to receive notifications about new registrations.', 'bsync-member' ) . '</p>';
+    echo '</td></tr>';
+
+    // Notify admin on new registration
+    echo '<tr><th scope="row">' . esc_html__( 'Notify Admin', 'bsync-member' ) . '</th><td>';
+    echo '<label><input type="checkbox" name="notify_admin_new_registration" value="1" ' . checked( $notify_admin, 1, false ) . '> ';
+    echo esc_html__( 'Send email notification when a new registration is submitted', 'bsync-member' ) . '</label>';
+    echo '</td></tr>';
+
+    // Notify user when approved
+    echo '<tr><th scope="row">' . esc_html__( 'Notify User on Approval', 'bsync-member' ) . '</th><td>';
+    echo '<label><input type="checkbox" name="notify_user_approved" value="1" ' . checked( $notify_user_approved, 1, false ) . '> ';
+    echo esc_html__( 'Send welcome email to user when their registration is approved', 'bsync-member' ) . '</label>';
+    echo '</td></tr>';
+
+    // Notify user when rejected
+    echo '<tr><th scope="row">' . esc_html__( 'Notify User on Rejection', 'bsync-member' ) . '</th><td>';
+    echo '<label><input type="checkbox" name="notify_user_rejected" value="1" ' . checked( $notify_user_rejected, 1, false ) . '> ';
+    echo esc_html__( 'Send email to user when their registration is rejected', 'bsync-member' ) . '</label>';
+    echo '</td></tr>';
+
+    echo '</table>';
+
+    submit_button( __( 'Save Approval Settings', 'bsync-member' ) );
+
     echo '</div>';
+
+    echo '</form>';
 
     // Next steps
     echo '<div class="card" style="max-width: 900px; margin-top: 20px;">';
@@ -1610,6 +1734,299 @@ function bsync_member_render_group_assignments_tab() {
 }
 
 /**
+ * Pending Registrations page: view, approve, or reject member registrations.
+ */
+function bsync_member_render_registrations_page() {
+    if ( ! current_user_can( BSYNC_MEMBER_MANAGE_CAP ) ) {
+        wp_die( __( 'You do not have permission to access this page.', 'bsync-member' ) );
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'bsync_member_registrations';
+    $notice = '';
+    $error = '';
+
+    // Handle approve/reject actions
+    if ( isset( $_POST['action'], $_POST['registration_id'], $_POST['_wpnonce'] ) ) {
+        $registration_id = absint( $_POST['registration_id'] );
+        
+        if ( wp_verify_nonce( $_POST['_wpnonce'], 'bsync_member_registration_action_' . $registration_id ) ) {
+            $action = sanitize_key( $_POST['action'] );
+            $notes = isset( $_POST['notes'] ) ? sanitize_textarea_field( wp_unslash( $_POST['notes'] ) ) : '';
+            
+            // Get the registration
+            $registration = $wpdb->get_row(
+                $wpdb->prepare( "SELECT * FROM {$table_name} WHERE id = %d", $registration_id ),
+                ARRAY_A
+            );
+
+            if ( $registration && $registration['status'] === 'pending' ) {
+                if ( $action === 'approve' ) {
+                    // Create the user account
+                    $form_data = json_decode( $registration['form_data'], true );
+                    $password = isset( $form_data['password'] ) ? $form_data['password'] : wp_generate_password();
+                    
+                    $user_id = bsync_member_create_user_from_registration(
+                        $registration['email'],
+                        $password,
+                        $registration['first_name'],
+                        $registration['last_name'],
+                        $registration['member_type'],
+                        $form_data
+                    );
+
+                    if ( $user_id ) {
+                        // Update registration status
+                        $wpdb->update(
+                            $table_name,
+                            array(
+                                'status' => 'approved',
+                                'processed_at' => current_time( 'mysql' ),
+                                'processed_by' => get_current_user_id(),
+                                'user_id' => $user_id,
+                                'notes' => $notes,
+                            ),
+                            array( 'id' => $registration_id ),
+                            array( '%s', '%s', '%d', '%d', '%s' ),
+                            array( '%d' )
+                        );
+
+                        // Send approval email
+                        $notify_approved = get_option( 'bsync_member_notify_user_approved', 1 );
+                        if ( $notify_approved ) {
+                            bsync_member_send_approval_email( $user_id, $registration['email'], $registration['first_name'] );
+                        }
+
+                        $notice = __( 'Registration approved and user account created.', 'bsync-member' );
+                    } else {
+                        $error = __( 'Failed to create user account.', 'bsync-member' );
+                    }
+                } elseif ( $action === 'reject' ) {
+                    // Update registration status to rejected
+                    $wpdb->update(
+                        $table_name,
+                        array(
+                            'status' => 'rejected',
+                            'processed_at' => current_time( 'mysql' ),
+                            'processed_by' => get_current_user_id(),
+                            'notes' => $notes,
+                        ),
+                        array( 'id' => $registration_id ),
+                        array( '%s', '%s', '%d', '%s' ),
+                        array( '%d' )
+                    );
+
+                    // Send rejection email
+                    $notify_rejected = get_option( 'bsync_member_notify_user_rejected', 0 );
+                    if ( $notify_rejected ) {
+                        bsync_member_send_rejection_email( $registration['email'], $registration['first_name'], $notes );
+                    }
+
+                    $notice = __( 'Registration rejected.', 'bsync-member' );
+                }
+            }
+        }
+    }
+
+    // Get filter status
+    $filter_status = isset( $_GET['status'] ) ? sanitize_key( $_GET['status'] ) : 'pending';
+
+    // Fetch registrations
+    $where_clause = "WHERE status = %s";
+    if ( $filter_status === 'all' ) {
+        $registrations = $wpdb->get_results( "SELECT * FROM {$table_name} ORDER BY created_at DESC", ARRAY_A );
+    } else {
+        $registrations = $wpdb->get_results(
+            $wpdb->prepare( "SELECT * FROM {$table_name} {$where_clause} ORDER BY created_at DESC", $filter_status ),
+            ARRAY_A
+        );
+    }
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Pending Registrations', 'bsync-member' ) . '</h1>';
+
+    if ( $notice ) {
+        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $notice ) . '</p></div>';
+    }
+    if ( $error ) {
+        echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $error ) . '</p></div>';
+    }
+
+    // Filter tabs
+    echo '<ul class="subsubsub">';
+    $statuses = array(
+        'pending' => __( 'Pending', 'bsync-member' ),
+        'approved' => __( 'Approved', 'bsync-member' ),
+        'rejected' => __( 'Rejected', 'bsync-member' ),
+        'all' => __( 'All', 'bsync-member' ),
+    );
+
+    $status_counts = array();
+    foreach ( array( 'pending', 'approved', 'rejected' ) as $status ) {
+        $status_counts[ $status ] = (int) $wpdb->get_var(
+            $wpdb->prepare( "SELECT COUNT(*) FROM {$table_name} WHERE status = %s", $status )
+        );
+    }
+    $status_counts['all'] = array_sum( $status_counts );
+
+    $first = true;
+    foreach ( $statuses as $status => $label ) {
+        if ( ! $first ) {
+            echo ' | ';
+        }
+        $first = false;
+        
+        $class = ( $filter_status === $status ) ? 'current' : '';
+        $url = add_query_arg(
+            array(
+                'page' => 'bsync-member-registrations',
+                'status' => $status,
+            ),
+            admin_url( 'admin.php' )
+        );
+        
+        $count = isset( $status_counts[ $status ] ) ? $status_counts[ $status ] : 0;
+        echo '<li><a href="' . esc_url( $url ) . '" class="' . esc_attr( $class ) . '">' . esc_html( $label ) . ' <span class="count">(' . $count . ')</span></a></li>';
+    }
+    echo '</ul>';
+
+    // Registrations table
+    if ( empty( $registrations ) ) {
+        echo '<p style="margin-top: 20px;">' . esc_html__( 'No registrations found.', 'bsync-member' ) . '</p>';
+    } else {
+        echo '<table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">';
+        echo '<thead><tr>';
+        echo '<th>' . esc_html__( 'Name', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Email', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Phone', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Member Type', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Date Submitted', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Status', 'bsync-member' ) . '</th>';
+        echo '<th>' . esc_html__( 'Actions', 'bsync-member' ) . '</th>';
+        echo '</tr></thead><tbody>';
+
+        foreach ( $registrations as $reg ) {
+            $full_name = $reg['first_name'] . ' ' . $reg['last_name'];
+            $member_type_label = $reg['member_type'];
+            
+            // Get role label if it exists
+            $all_member_types = bsync_member_get_member_types();
+            if ( isset( $all_member_types[ $reg['member_type'] ] ) ) {
+                $member_type_label = $all_member_types[ $reg['member_type'] ];
+            }
+
+            echo '<tr>';
+            echo '<td>' . esc_html( $full_name ) . '</td>';
+            echo '<td>' . esc_html( $reg['email'] ) . '</td>';
+            echo '<td>' . esc_html( $reg['phone'] ) . '</td>';
+            echo '<td>' . esc_html( $member_type_label ) . '</td>';
+            echo '<td>' . esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $reg['created_at'] ) ) . '</td>';
+            echo '<td>';
+            
+            if ( $reg['status'] === 'pending' ) {
+                echo '<span class="dashicons dashicons-clock" style="color: #f0b849;"></span> ' . esc_html__( 'Pending', 'bsync-member' );
+            } elseif ( $reg['status'] === 'approved' ) {
+                echo '<span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> ' . esc_html__( 'Approved', 'bsync-member' );
+            } else {
+                echo '<span class="dashicons dashicons-dismiss" style="color: #dc3232;"></span> ' . esc_html__( 'Rejected', 'bsync-member' );
+            }
+            
+            echo '</td>';
+            echo '<td>';
+
+            if ( $reg['status'] === 'pending' ) {
+                // Show approve/reject buttons
+                echo '<button type="button" class="button button-small bsync-registration-action" data-action="approve" data-id="' . esc_attr( $reg['id'] ) . '">' . esc_html__( 'Approve', 'bsync-member' ) . '</button> ';
+                echo '<button type="button" class="button button-small bsync-registration-action" data-action="reject" data-id="' . esc_attr( $reg['id'] ) . '" style="margin-left: 5px;">' . esc_html__( 'Reject', 'bsync-member' ) . '</button>';
+            } else {
+                echo '<button type="button" class="button button-small bsync-view-details" data-id="' . esc_attr( $reg['id'] ) . '">' . esc_html__( 'View Details', 'bsync-member' ) . '</button>';
+            }
+
+            echo '</td>';
+            echo '</tr>';
+
+            // Hidden row with full details
+            echo '<tr id="registration-details-' . esc_attr( $reg['id'] ) . '" class="registration-details" style="display: none;">';
+            echo '<td colspan="7">';
+            echo '<div style="padding: 15px; background: #f9f9f9; border-left: 3px solid #0073aa;">';
+            echo '<h3>' . esc_html__( 'Registration Details', 'bsync-member' ) . '</h3>';
+            
+            // Show form data
+            $form_data = json_decode( $reg['form_data'], true );
+            if ( is_array( $form_data ) ) {
+                echo '<table class="widefat" style="margin-top: 10px;">';
+                foreach ( $form_data as $key => $value ) {
+                    if ( $key === 'password' || $key === 'confirm_password' ) {
+                        continue; // Don't show passwords
+                    }
+                    echo '<tr><th style="width: 200px;">' . esc_html( ucwords( str_replace( '_', ' ', $key ) ) ) . '</th><td>' . esc_html( is_array( $value ) ? implode( ', ', $value ) : $value ) . '</td></tr>';
+                }
+                echo '</table>';
+            }
+
+            if ( $reg['status'] !== 'pending' ) {
+                echo '<p style="margin-top: 15px;"><strong>' . esc_html__( 'Processed:', 'bsync-member' ) . '</strong> ' . esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $reg['processed_at'] ) ) . '</p>';
+                
+                if ( $reg['processed_by'] ) {
+                    $processor = get_user_by( 'id', $reg['processed_by'] );
+                    if ( $processor ) {
+                        echo '<p><strong>' . esc_html__( 'Processed by:', 'bsync-member' ) . '</strong> ' . esc_html( $processor->display_name ) . '</p>';
+                    }
+                }
+
+                if ( ! empty( $reg['notes'] ) ) {
+                    echo '<p><strong>' . esc_html__( 'Notes:', 'bsync-member' ) . '</strong><br>' . esc_html( $reg['notes'] ) . '</p>';
+                }
+            }
+
+            if ( $reg['status'] === 'pending' ) {
+                // Show approval/rejection form
+                echo '<form method="post" style="margin-top: 15px;" id="registration-form-' . esc_attr( $reg['id'] ) . '">';
+                wp_nonce_field( 'bsync_member_registration_action_' . $reg['id'], '_wpnonce' );
+                echo '<input type="hidden" name="registration_id" value="' . esc_attr( $reg['id'] ) . '">';
+                echo '<input type="hidden" name="action" id="action-' . esc_attr( $reg['id'] ) . '" value="">';
+                echo '<p><label for="notes-' . esc_attr( $reg['id'] ) . '"><strong>' . esc_html__( 'Notes (optional):', 'bsync-member' ) . '</strong></label><br>';
+                echo '<textarea name="notes" id="notes-' . esc_attr( $reg['id'] ) . '" class="large-text" rows="3"></textarea></p>';
+                echo '</form>';
+            }
+
+            echo '</div>';
+            echo '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody></table>';
+    }
+
+    echo '</div>';
+
+    // JavaScript for approve/reject buttons
+    ?>
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('.bsync-registration-action').on('click', function() {
+            var action = $(this).data('action');
+            var id = $(this).data('id');
+            var confirm_message = action === 'approve' 
+                ? '<?php echo esc_js( __( 'Are you sure you want to approve this registration and create the user account?', 'bsync-member' ) ); ?>'
+                : '<?php echo esc_js( __( 'Are you sure you want to reject this registration?', 'bsync-member' ) ); ?>';
+            
+            if (confirm(confirm_message)) {
+                $('#action-' + id).val(action);
+                $('#registration-form-' + id).submit();
+            }
+        });
+
+        $('.bsync-view-details').on('click', function() {
+            var id = $(this).data('id');
+            $('#registration-details-' + id).toggle();
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
  * Render "How It Works" instructions from a static HTML file.
  */
 function bsync_member_render_how_it_works_page() {
@@ -2072,7 +2489,7 @@ function bsync_member_adjust_category_query( $query ) {
 add_action( 'pre_get_posts', 'bsync_member_adjust_category_query' );
 
 /**
- * Fluent Forms integration: link submissions to members and member pages.
+ * Fluent Forms integration: handle both registration forms and member page links.
  *
  * We hook into several Fluent Forms actions and then look up the submission
  * by ID, so this remains robust even if the hook signatures differ.
@@ -2107,6 +2524,16 @@ function bsync_member_handle_fluent_submission( ...$args ) {
         }
     }
 
+    // Check if this is a registration form by looking for required registration fields
+    $is_registration = bsync_member_is_registration_form( $response );
+
+    if ( $is_registration ) {
+        // This is a registration form - handle the registration
+        bsync_member_process_registration( $entry_id, $entry['form_id'], $response );
+        return;
+    }
+
+    // Not a registration form - handle as normal member page link submission
     $user_id = get_current_user_id();
 
     // If not logged in, try to map to an existing member by email.
@@ -2243,6 +2670,240 @@ function bsync_member_get_submissions_for_user( $user_id, $limit = 20 ) {
     $rows = $wpdb->get_results( $sql, ARRAY_A );
 
     return $rows ? $rows : array();
+}
+
+/**
+ * Check if a Fluent Forms submission is a registration form.
+ * A registration form is identified by having full_name, email, password, and member_type fields.
+ */
+function bsync_member_is_registration_form( $response ) {
+    if ( ! is_array( $response ) ) {
+        return false;
+    }
+
+    // Required registration fields (password might not be in response for security)
+    $required_fields = array( 'full_name', 'email', 'member_type' );
+    $found_fields    = 0;
+
+    foreach ( $required_fields as $field ) {
+        if ( isset( $response[ $field ] ) ) {
+            $found_fields++;
+        }
+    }
+
+    // All 3 core fields must be present
+    return $found_fields === 3;
+}
+
+/**
+ * Process a registration form submission.
+ * Either creates the user immediately or stores in pending registrations table.
+ */
+function bsync_member_process_registration( $submission_id, $form_id, $response ) {
+    global $wpdb;
+
+    // Extract registration data
+    $full_name = isset( $response['full_name'] ) ? sanitize_text_field( $response['full_name'] ) : '';
+    $email     = isset( $response['email'] ) ? sanitize_email( $response['email'] ) : '';
+    $phone     = isset( $response['phone'] ) ? sanitize_text_field( $response['phone'] ) : '';
+    $password  = isset( $response['password'] ) ? $response['password'] : wp_generate_password(); // Don't sanitize password
+    $member_type = isset( $response['member_type'] ) ? sanitize_text_field( $response['member_type'] ) : '';
+
+    // Validate required fields
+    if ( empty( $full_name ) || empty( $email ) || empty( $member_type ) ) {
+        return; // Missing required fields
+    }
+
+    // Check if email already exists
+    if ( email_exists( $email ) ) {
+        return; // User already exists, don't create duplicate
+    }
+
+    // Split full name into first and last name
+    $name_parts = explode( ' ', $full_name, 2 );
+    $first_name = $name_parts[0];
+    $last_name  = isset( $name_parts[1] ) ? $name_parts[1] : '';
+
+    // Check if auto-approval is enabled
+    $auto_approve = get_option( 'bsync_member_auto_approve_registrations', 0 );
+
+    if ( $auto_approve ) {
+        // Auto-approve: create user account immediately
+        $user_id = bsync_member_create_user_from_registration(
+            $email,
+            $password,
+            $first_name,
+            $last_name,
+            $member_type,
+            $response
+        );
+
+        if ( $user_id ) {
+            // Store in registrations table as approved
+            $table_name = $wpdb->prefix . 'bsync_member_registrations';
+            $wpdb->insert(
+                $table_name,
+                array(
+                    'form_id'      => $form_id,
+                    'submission_id' => $submission_id,
+                    'first_name'   => $first_name,
+                    'last_name'    => $last_name,
+                    'email'        => $email,
+                    'phone'        => $phone,
+                    'member_type'  => $member_type,
+                    'form_data'    => wp_json_encode( $response ),
+                    'status'       => 'approved',
+                    'created_at'   => current_time( 'mysql' ),
+                    'processed_at' => current_time( 'mysql' ),
+                    'processed_by' => 0, // Auto-approved
+                    'user_id'      => $user_id,
+                ),
+                array( '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d' )
+            );
+
+            // Send welcome email if enabled
+            $notify_approved = get_option( 'bsync_member_notify_user_approved', 1 );
+            if ( $notify_approved ) {
+                bsync_member_send_approval_email( $user_id, $email, $first_name );
+            }
+        }
+    } else {
+        // Manual approval: store in pending registrations
+        $table_name = $wpdb->prefix . 'bsync_member_registrations';
+        $wpdb->insert(
+            $table_name,
+            array(
+                'form_id'      => $form_id,
+                'submission_id' => $submission_id,
+                'first_name'   => $first_name,
+                'last_name'    => $last_name,
+                'email'        => $email,
+                'phone'        => $phone,
+                'member_type'  => $member_type,
+                'form_data'    => wp_json_encode( $response ),
+                'status'       => 'pending',
+                'created_at'   => current_time( 'mysql' ),
+            ),
+            array( '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+        );
+
+        // Send admin notification if enabled
+        $notify_admin = get_option( 'bsync_member_notify_admin_new_registration', 1 );
+        if ( $notify_admin ) {
+            bsync_member_send_admin_notification( $first_name, $last_name, $email, $member_type );
+        }
+    }
+}
+
+/**
+ * Create a WordPress user from registration data.
+ */
+function bsync_member_create_user_from_registration( $email, $password, $first_name, $last_name, $member_type, $form_data = array() ) {
+    // Create username from email (before @ symbol)
+    $username = sanitize_user( current( explode( '@', $email ) ) );
+
+    // Make sure username is unique
+    $base_username = $username;
+    $counter       = 1;
+    while ( username_exists( $username ) ) {
+        $username = $base_username . $counter;
+        $counter++;
+    }
+
+    // Create the user
+    $user_id = wp_create_user( $username, $password, $email );
+
+    if ( is_wp_error( $user_id ) ) {
+        return false;
+    }
+
+    // Update user meta
+    wp_update_user(
+        array(
+            'ID'         => $user_id,
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'display_name' => $first_name . ' ' . $last_name,
+        )
+    );
+
+    // Assign member role
+    $user = new WP_User( $user_id );
+    $user->set_role( $member_type );
+
+    // Mark as active member
+    update_user_meta( $user_id, 'bsync_member_active', 1 );
+
+    // Store phone if provided
+    if ( ! empty( $form_data['phone'] ) ) {
+        update_user_meta( $user_id, 'billing_phone', sanitize_text_field( $form_data['phone'] ) );
+    }
+
+    return $user_id;
+}
+
+/**
+ * Send admin notification email about new registration.
+ */
+function bsync_member_send_admin_notification( $first_name, $last_name, $email, $member_type ) {
+    $admin_email = get_option( 'bsync_member_admin_notification_email', get_option( 'admin_email' ) );
+    $subject     = '[' . get_bloginfo( 'name' ) . '] New Member Registration';
+    
+    $message = sprintf(
+        "A new member registration has been submitted:\n\n" .
+        "Name: %s %s\n" .
+        "Email: %s\n" .
+        "Member Type: %s\n\n" .
+        "Please review and approve this registration in your WordPress admin:\n%s",
+        $first_name,
+        $last_name,
+        $email,
+        $member_type,
+        admin_url( 'admin.php?page=bsync-member-registrations' )
+    );
+
+    wp_mail( $admin_email, $subject, $message );
+}
+
+/**
+ * Send approval email to user.
+ */
+function bsync_member_send_approval_email( $user_id, $email, $first_name ) {
+    $subject = '[' . get_bloginfo( 'name' ) . '] Your Membership Has Been Approved';
+    
+    $message = sprintf(
+        "Hello %s,\n\n" .
+        "Your membership application has been approved!\n\n" .
+        "You can now log in to your account:\n%s\n\n" .
+        "If you have any questions, please contact us.\n\n" .
+        "Thank you!",
+        $first_name,
+        wp_login_url()
+    );
+
+    wp_mail( $email, $subject, $message );
+}
+
+/**
+ * Send rejection email to user.
+ */
+function bsync_member_send_rejection_email( $email, $first_name, $notes = '' ) {
+    $subject = '[' . get_bloginfo( 'name' ) . '] Membership Application Update';
+    
+    $message = sprintf(
+        "Hello %s,\n\n" .
+        "Thank you for your interest in becoming a member.\n\n" .
+        "Unfortunately, we are unable to approve your membership application at this time.\n\n",
+        $first_name
+    );
+
+    if ( ! empty( $notes ) ) {
+        $message .= "Notes: " . $notes . "\n\n";
+    }
+
+    $message .= "If you have any questions, please contact us.\n";
+
+    wp_mail( $email, $subject, $message );
 }
 
 /**
