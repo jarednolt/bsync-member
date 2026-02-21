@@ -3493,7 +3493,7 @@ function bsync_member_render_roles_page_content() {
         if ( ! empty( $_POST['bsync_member_new_admin_manager_type'] ) ) {
             $label = sanitize_text_field( wp_unslash( $_POST['bsync_member_new_admin_manager_type'] ) );
             if ( $label ) {
-                $slug = sanitize_key( $label );
+                $slug = 'bsync_' . sanitize_key( $label );
                 if ( ! isset( $admin_manager_types[ $slug ] ) ) {
                     $admin_manager_types[ $slug ] = $label;
 
@@ -3535,7 +3535,7 @@ function bsync_member_render_roles_page_content() {
         if ( ! empty( $_POST['bsync_member_new_manager_group'] ) ) {
             $label = sanitize_text_field( wp_unslash( $_POST['bsync_member_new_manager_group'] ) );
             if ( $label ) {
-                $slug = sanitize_key( $label );
+                $slug = 'bsync_' . sanitize_key( $label );
                 if ( ! isset( $manager_groups[ $slug ] ) ) {
                     $manager_groups[ $slug ] = $label;
 
@@ -3556,7 +3556,7 @@ function bsync_member_render_roles_page_content() {
         if ( ! empty( $_POST['bsync_member_new_member_type'] ) ) {
             $label = sanitize_text_field( wp_unslash( $_POST['bsync_member_new_member_type'] ) );
             if ( $label ) {
-                $slug = sanitize_key( $label );
+                $slug = 'bsync_' . sanitize_key( $label );
                 if ( ! isset( $member_types[ $slug ] ) ) {
                     $member_types[ $slug ] = $label;
 
@@ -3639,7 +3639,7 @@ function bsync_member_render_roles_page_content() {
     echo '<tr><th scope="row"><label for="bsync_member_new_admin_manager_type">' . esc_html__( 'New admin manager type', 'bsync-member' ) . '</label></th><td>';
     echo '<input type="text" class="regular-text" name="bsync_member_new_admin_manager_type" id="bsync_member_new_admin_manager_type" /> ';
     submit_button( __( 'Add Admin Manager Type', 'bsync-member' ), 'secondary', 'submit_add_admin_manager_type', false );
-    echo '<p class="description">' . esc_html__( 'This creates a category label for organizing different types of admin managers.', 'bsync-member' ) . '</p>';
+    echo '<p class="description">' . esc_html__( 'The label is for display; a machine-readable slug is generated with "bsync_" prefix to avoid conflicts.', 'bsync-member' ) . '</p>';
     echo '</td></tr>';
     echo '</table>';
 
@@ -3667,7 +3667,7 @@ function bsync_member_render_roles_page_content() {
     echo '<tr><th scope="row"><label for="bsync_member_new_manager_group">' . esc_html__( 'New member manager role', 'bsync-member' ) . '</label></th><td>';
     echo '<input type="text" class="regular-text" name="bsync_member_new_manager_group" id="bsync_member_new_manager_group" /> ';
     submit_button( __( 'Add Manager Role', 'bsync-member' ), 'secondary', 'submit_add_manager_group', false );
-    echo '<p class="description">' . esc_html__( 'The text you enter here becomes a label; a machine-readable slug is generated automatically.', 'bsync-member' ) . '</p>';
+    echo '<p class="description">' . esc_html__( 'The label is for display; a machine-readable slug is generated with "bsync_" prefix to avoid conflicts.', 'bsync-member' ) . '</p>';
     echo '</td></tr>';
     echo '</table>';
 
@@ -3695,7 +3695,7 @@ function bsync_member_render_roles_page_content() {
     echo '<tr><th scope="row"><label for="bsync_member_new_member_type">' . esc_html__( 'New member role', 'bsync-member' ) . '</label></th><td>';
     echo '<input type="text" class="regular-text" name="bsync_member_new_member_type" id="bsync_member_new_member_type" /> ';
     submit_button( __( 'Add Member Role', 'bsync-member' ), 'secondary', 'submit_add_member_type', false );
-    echo '<p class="description">' . esc_html__( 'Again, the label is for humans; a slug is generated automatically.', 'bsync-member' ) . '</p>';
+    echo '<p class="description">' . esc_html__( 'The label is for display; a machine-readable slug is generated with "bsync_" prefix to avoid conflicts.', 'bsync-member' ) . '</p>';
     echo '</td></tr>';
     echo '</table>';
 
