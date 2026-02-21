@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.4.0
+ * Version: 1.4.1
  * Author: bsync.me
  * Text Domain: bsync-member
  */
