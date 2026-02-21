@@ -196,3 +196,95 @@
     margin-top: 0.5rem;
     font-size: 0.95rem;
 }
+
+/* Tab Navigation */
+.bsync-member-tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #e2e2e2;
+    padding-bottom: 0;
+}
+
+.bsync-member-tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: -2px;
+}
+
+.bsync-member-tab-btn:hover {
+    color: #0073aa;
+    background: #f8f9fa;
+}
+
+.bsync-member-tab-btn.active {
+    color: #0073aa;
+    border-bottom-color: #0073aa;
+}
+
+.bsync-member-tab-content {
+    display: none;
+}
+
+.bsync-member-tab-content.active {
+    display: block;
+}
+
+/* Member profiles grid in Members tab */
+.bsync-member-profiles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.bsync-member-profile-card {
+    background: #ffffff;
+    border: 1px solid #e2e2e2;
+    border-radius: 6px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.bsync-member-profile-card h4 {
+    margin: 0 0 0.5rem;
+    font-size: 1.15rem;
+    color: #333;
+}
+
+.bsync-member-profile-card .bsync-member-type {
+    font-size: 0.9rem;
+    color: #666;
+    margin: 0 0 0.75rem;
+    font-weight: 500;
+}
+
+.bsync-member-profile-card .bsync-member-email {
+    font-size: 0.9rem;
+    color: #999;
+    margin: 0 0 1rem;
+    word-break: break-word;
+}
+
+.bsync-member-profile-card p:last-child {
+    margin-bottom: 0;
+}
+
+.bsync-member-profile-card a {
+    color: #0073aa;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.bsync-member-profile-card a:hover,
+.bsync-member-profile-card a:focus {
+    text-decoration: underline;
+}
