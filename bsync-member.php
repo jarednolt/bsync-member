@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bsync Member
  * Description: Member roles, private member pages, and taxonomy that integrate with the bsynce CRM plugin.
- * Version: 1.3.2
+ * Version: 1.3.4
  * Author: bsync.me
  * Text Domain: bsync-member
  */
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Basic plugin constants.
-define( 'BSYNC_MEMBER_VERSION', '1.3.2' );
+define( 'BSYNC_MEMBER_VERSION', '1.3.4' );
 define( 'BSYNC_MEMBER_PATH', plugin_dir_path( __FILE__ ) );
 define( 'BSYNC_MEMBER_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1345,14 +1345,14 @@ function bsync_member_noindex_member_pages() {
 add_action( 'wp_head', 'bsync_member_noindex_member_pages' );
 
 /**
- * Hide the WordPress admin bar on the front end for users who either have
- * no role at all or who are regular members created/managed by this plugin.
+ * Hide the WordPress admin bar for users who either have no role at all 
+ * or who are regular members created/managed by this plugin.
  *
  * Member Managers and site admins keep the admin bar so they can reach
  * wp-admin and management screens.
  */
 function bsync_member_control_admin_bar( $show ) {
-    if ( is_admin() || ! is_user_logged_in() ) {
+    if ( ! is_user_logged_in() ) {
         return $show;
     }
 
@@ -1363,13 +1363,13 @@ function bsync_member_control_admin_bar( $show ) {
 
     $roles = (array) $user->roles;
 
-    // Users with no role should not see the admin bar on the front end.
+    // Users with no role should not see the admin bar.
     if ( empty( $roles ) ) {
         return false;
     }
 
-    // Basic members (bsync_member) who are not managers/admins also do not
-    // need the admin bar on the front end.
+    // Basic members (bsync_member) who are not managers/admins should not
+    // see the admin bar at all (front-end or admin).
     if (
         in_array( BSYNC_MEMBER_ROLE, $roles, true ) &&
         ! user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) &&
@@ -1378,10 +1378,78 @@ function bsync_member_control_admin_bar( $show ) {
     ) {
         return false;
     }
+    
+    // Also hide admin bar for member type role users without management capabilities
+    $member_types = bsync_member_get_member_types();
+    foreach ( $roles as $role ) {
+        if ( isset( $member_types[ $role ] ) ) {
+            // This user has a member type role, check if they also have management capabilities
+            if (
+                ! user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) &&
+                ! user_can( $user, 'edit_posts' ) &&
+                ! user_can( $user, 'manage_options' )
+            ) {
+                return false;
+            }
+            break;
+        }
+    }
 
     return $show;
 }
 add_filter( 'show_admin_bar', 'bsync_member_control_admin_bar' );
+
+/**
+ * Prevent members from accessing wp-admin.
+ * Redirects them to the home page instead.
+ */
+function bsync_member_block_admin_access() {
+    // Allow AJAX requests (needed for some front-end functionality)
+    if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) {
+        return;
+    }
+    
+    if ( ! is_user_logged_in() ) {
+        return;
+    }
+    
+    $user = wp_get_current_user();
+    if ( ! $user || ! ( $user instanceof WP_User ) ) {
+        return;
+    }
+    
+    $roles = (array) $user->roles;
+    
+    // Block members from accessing wp-admin
+    // Allow managers and users with editing capabilities through
+    if (
+        in_array( BSYNC_MEMBER_ROLE, $roles, true ) &&
+        ! user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) &&
+        ! user_can( $user, 'edit_posts' ) &&
+        ! user_can( $user, 'manage_options' )
+    ) {
+        wp_redirect( home_url() );
+        exit;
+    }
+    
+    // Also block member type role users from accessing wp-admin
+    $member_types = bsync_member_get_member_types();
+    foreach ( $roles as $role ) {
+        if ( isset( $member_types[ $role ] ) ) {
+            // This user has a member type role, check if they also have management capabilities
+            if (
+                ! user_can( $user, BSYNC_MEMBER_MANAGE_CAP ) &&
+                ! user_can( $user, 'edit_posts' ) &&
+                ! user_can( $user, 'manage_options' )
+            ) {
+                wp_redirect( home_url() );
+                exit;
+            }
+            break;
+        }
+    }
+}
+add_action( 'admin_init', 'bsync_member_block_admin_access' );
 
 /**
  * Front-end styles for member pages, member category archives and shortcodes.
